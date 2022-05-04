@@ -9,42 +9,42 @@
   
 ## 2. For parameter recording only: 
 
-### 1). Start the form by copying following code in terminal:
+1). Start the form by copying following code in terminal:
 
       python pld_app_parameter.py
       
-### 2). Fill in growth condition and customized information
+2). Fill in growth condition and customized information
 
-### 4). After finish all recording and convert all videos, click "Save Prameters", and "Save to HDF5 and Upload". This may take longer time to finish. Local HDF5 file (plume images) and json file (condition) will be saved locally and upload to cloud.
+4). After finish all recording and convert all videos, click "Save Prameters", and "Save to HDF5 and Upload". This may take longer time to finish. Local HDF5 file (plume images) and json file (condition) will be saved locally and upload to cloud.
      
      
 ## 3. For parameter and plume recording: 
   
-### 1). Start the form by copying following code in terminal:
+1). Start the form by copying following code in terminal:
 
       python pld_app_plume.py
       
-### 2). Fill in growth condition and customized information
+2). Fill in growth condition and customized information
 
-### 3). For every ablation cycle (different target with preablation and ablation):
+3). For every ablation cycle (different target with preablation and ablation):
 
-#### 1>. Click the button "Move Videos to Pre-ablation Folder" or "Move Videos to Ablation Folder"
+  1>. Click the button "Move Videos to Pre-ablation Folder" or "Move Videos to Ablation Folder"
 
-#### 2>. Use "HPV-X Viewer" software on desktop to convert the raw file to readable images: 
+  2>. Use "HPV-X Viewer" software on desktop to convert the raw file to readable images: 
 "File" -> "Convert" -> Find the directory labelled start with your growth id -> Select all and click "CONVERT" 
 
-#### 3>. Waiting time depends on how many video is selected.
+  3>. Waiting time depends on how many video is selected.
 
-### 4). After finish all recording and convert all videos, click "Save Prameters", and "Save to HDF5 and Upload". This may take longer time to finish.
+4). After finish all recording and convert all videos, click "Save Prameters", and "Save to HDF5 and Upload". This may take longer time to finish.
 
 
 ## 4. Addition instruction for plume recording:
 
-### 1). Open Software "HPV-X" on desktop
+1). Open Software "HPV-X" on desktop
 
-### 2). Click "Live" button and increase "EXPOSE" to 10,000,000ns to align the camera focus between target and substrate holder.
+2). Click "Live" button and increase "EXPOSE" to 10,000,000ns to align the camera focus between target and substrate holder.
 
-### 3). Decrease the "EXPOSE" to 2,000,000ns and Click "REC" to start recording before ablation.
+3). Decrease the "EXPOSE" to 2,000,000ns and Click "REC" to start recording before ablation.
   
   
   
