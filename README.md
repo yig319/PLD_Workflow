@@ -115,4 +115,4 @@ Usage in python:
                 'axis_minor_length', 'centroid-1', 'centroid-2', 'orientation', 
                 'eccentricity', 'perimeter', 'velocity'] 
     plot_metrics(df, metrics_name, label_with='condition')
-    plot_metrics(df, metrics_name, label_with='growth_index')    
+    plot_metrics(df, metrics_name, label_with='growth_index')  
