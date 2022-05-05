@@ -82,7 +82,7 @@ class PlumeMetrics():
                 metrics[m].append([])
 
             for img in images:
-                img_show = crop_clip_image(img, x_start=50, intensity=200)
+                img_show = self.crop_clip_image(img, x_start=50, intensity=200)
                 if np.sum(img_show) == 0:
                     for m in metrics_name:
                         metrics[m][i].append(0)
@@ -153,7 +153,7 @@ class PlumeMetrics():
         metric_name_index = np.repeat(metrics_name, plots_all.shape[1]*plots_all.shape[2])
         growth_index = list(np.repeat(np.arange(plots_all.shape[1]), plots_all.shape[2]))*plots_all.shape[0]
         time_index = np.array(list(np.arange(plots_all.shape[2]))*plots_all.shape[1]*plots_all.shape[0])
-        condition_list = [condition]*len(time_index)
+        condition_list = [self.condition]*len(time_index)
 
         data = np.stack((condition_list, metric_name_index, growth_index, 
                          time_index, plots_all.reshape(-1)))
@@ -166,6 +166,7 @@ class PlumeMetrics():
         df['time_step'] = df['time_step'].astype(np.int32)
         df['a.u.'] = df['a.u.'].astype(np.float32)
         return df
+
 
 
     
