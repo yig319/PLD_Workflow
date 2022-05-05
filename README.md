@@ -1,4 +1,5 @@
-# Instruction PLD form:
+# Instruction to open PLD digital form:
+
 ## 1. Start the program:
   1). Click "Start" - "Anaconda Prompt"
   2). Copy the following code in the opened terminal:
@@ -33,6 +34,36 @@
   2>. Use "HPV-X Viewer" software on the desktop to convert the raw file to readable images: 
 "File" -> "Convert" -> Find the directory labelled start with your growth id -> Select all and click "CONVERT" 
 
+
+
+
+#PLDForm README:
+## Utility functions for Pulsed Laser Deposition
+
+### pld_functions.py: 
+
+  Include a digital form for growth condition recording and plume imaging management.
+
+  Usage: 
+
+  1. For condition recording only: 
+    
+    if __name__ == "__main__":
+      app = QApplication(sys.argv)
+      window = PLD_Form(version="parameter")
+      window.show()
+      app.exec_()
+
+  2. With plume recording and management: 
+  
+    if __name__ == "__main__":
+      app = QApplication(sys.argv)
+      window = PLD_Form(version="plume")
+      window.show()
+      app.exec_()
+      
+
+
   3>. Waiting time depends on how many videos are selected.
 
 4). After finishing all recording and converting all videos, click "Save Parameters", and "Save to HDF5 and Upload". It may take a longer time to finish.
@@ -45,3 +76,9 @@
 2). Click the "Live" button and increase "EXPOSE" to 10,000,000ns to align the camera focus between the target and substrate holder.
 
 3). Decrease the "EXPOSE" to 2,000,000ns and Click "REC" to start recording before ablation.
+
+
+
+
+
+
