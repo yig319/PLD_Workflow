@@ -116,8 +116,3 @@ Usage in python:
                 'eccentricity', 'perimeter', 'velocity'] 
     plot_metrics(df, metrics_name, label_with='condition')
     plot_metrics(df, metrics_name, label_with='growth_index')    
-
-
-
-
-
