@@ -12,6 +12,15 @@ from PyQt5.QtCore import *
 from PyQt5.QtWidgets import * 
 from ManagePlume import remove_desktop_ini, pack_to_hdf5_and_upload, pack_to_hdf5, upload_to_datafed
 
+class message_window(QWidget):
+    def __init__(self, message):
+        super().__init__()
+        self.message = '\n    '+message
+        self.initUI()
+    def initUI(self):
+        lblName = QLabel(self.message, self)
+
+
 class GenerateForm(QWidget):
     '''
     This is the digital form to record PLD experiment parameters mainly, 
@@ -39,8 +48,8 @@ class GenerateForm(QWidget):
         self.name_input = QLineEdit()
         self.date_input = QLineEdit(datetime.datetime.today().strftime("%m/%d/%Y"))
         self.time_input = QLineEdit(datetime.datetime.now().strftime("%H:%M:%S"))
-#         self.save_path_input = QLineEdit(os.getcwd()) 
-        self.save_path_input = QLineEdit('C:/Image/') 
+        self.save_path_input = QLineEdit(os.getcwd()) 
+#         self.save_path_input = QLineEdit('C:/Image/') 
 
         self.custom_key = QLineEdit()
         self.custom_key.setFixedSize(80, self.window_height)
@@ -195,7 +204,7 @@ class GenerateForm(QWidget):
             
             self.button_pack = QPushButton(self)
             self.button_pack.setText("Save to HDF5 and Upload")
-            self.button_pack.clicked.connect(lambda: pack_to_hdf5_and_upload(self.path, self.file_name, self.info_dict))
+            self.button_pack.clicked.connect(lambda: self.pack_to_hdf5_and_upload_with_popwindow(self.path, self.file_name, self.info_dict))
             self.toplayout.addWidget(self.button_pack)
         
         #  notes - second level
@@ -204,61 +213,7 @@ class GenerateForm(QWidget):
         self.form_notes.setLayout(self.notes_layout)
         self.notes_layout.addRow(QLabel("Notes"), self.notes_input)
         self.toplayout.addWidget(self.form_notes)
-        
-    def convert_to_image(self):
-
-        '''
-        This is a function to convert raw plume file to readable images.
-
-        '''
-        print('This is button is not functional yet, please convert manually with README instruction.')
-        
-
-    def move_to_folder(self, pre):
-
-        '''
-        This is a function to move plumes in default folder of acquisition software to target folder.
-
-        :param pre: if True, plume images will be moved to pre-ablation folder
-        :type pre: bool
-
-        '''
-
-        self.path = self.save_path_input.text() + '/'
-        
-        id = self.growth_id_input.text()
-        name = self.name_input.text()
-        date = ''.join(self.date_input.text().split('/'))
-        
-        if not os.path.isdir(self.path+self.file_name):
-            os.mkdir(self.path+self.file_name)
-        
-        date_list = self.date_input.text().split('/')
-        date_m = date_list[2]+'_'+date_list[0]+'_'+date_list[1]
-        remove_desktop_ini(self.path)
-
-        file_list = glob.glob(self.path + date_m + '/*')
-        i = self.current_page
-        if pre:
-            dst = self.path+self.file_name+'/'+str(i+1)+'-'+self.target_input[i].text()+'_'+'Pre'
-            print('Saving videos to pre-ablation folder...')
-        else:
-            dst = self.path+self.file_name+'/'+str(i+1)+'-'+self.target_input[i].text()
-            print('Saving videos to ablation folder...')
-            
-        if not os.path.isdir(dst):
-            os.mkdir(dst)
-            remove_desktop_ini(dst)
-#             print('The target directory is not created, please "Create Directory" first.')
-#             return 
-           
-        # remove desktop.ini file from all sub-directory
-
-        for file in file_list:
-            shutil.move(file, dst)
-            
-        print('Done!')
-       
+ 
 
     def create_header(self):
 
@@ -306,10 +261,10 @@ class GenerateForm(QWidget):
         layout.addWidget(form_target, 0, 0)
         layout_target.addRow(QLabel("Target:"), self.target_input[create_index])
         
-        form_button = QGroupBox()
-        layout_button = QFormLayout()
-        form_button.setLayout(layout_button)
-        layout.addWidget(form_button, 0, 1)
+#         form_button = QGroupBox()
+#         layout_button = QFormLayout()
+#         form_button.setLayout(layout_button)
+#         layout.addWidget(form_button, 1, 0)
  
         form_lens = QGroupBox("Lens Parameters")
         layout_lens = QFormLayout()
@@ -333,24 +288,18 @@ class GenerateForm(QWidget):
         form_pre = QGroupBox("Pre-ablation")
         layout_pre = QFormLayout()
         form_pre.setLayout(layout_pre)
-        layout.addWidget(form_pre, 2, 0)
+        layout.addWidget(form_pre, 1, 2)
         layout_pre.addRow(QLabel("Temperature (\N{DEGREE SIGN}C)"), self.pre_temperature_input[create_index])
         layout_pre.addRow(QLabel("Pressure (mTorr)"), self.pre_pressure_input[create_index])
         layout_pre.addRow(QLabel("Atmosphere Gas"), self.pre_gas_input[create_index])
         layout_pre.addRow(QLabel("Frequency (Hz)"), self.pre_frequency_input[create_index])
         layout_pre.addRow(QLabel("Pulses"), self.pre_number_pulses_input[create_index])
-        
-        if self.version == 'plume':
-            self.button_move_pre = QPushButton(self)
-    #         self.button_folder.setFixedSize(300, self.window_height)
-            self.button_move_pre.setText("Move Videos To Pre-ablation Folder")
-            self.button_move_pre.clicked.connect(lambda: self.move_to_folder(pre=True))
-            layout.addWidget(self.button_move_pre, 3, 0)  
+
         
         form_ablation = QGroupBox("Ablation")
         layout_ablation = QFormLayout()
         form_ablation.setLayout(layout_ablation)
-        layout.addWidget(form_ablation, 2, 1)
+        layout.addWidget(form_ablation, 1, 3)
         layout_ablation.addRow(QLabel("Temperature (\N{DEGREE SIGN}C)"), self.temperature_input[create_index])
         layout_ablation.addRow(QLabel("Pressure (mTorr)"), self.pressure_input[create_index])
         layout_ablation.addRow(QLabel("Atmosphere Gas"), self.gas_input[create_index])
@@ -358,13 +307,82 @@ class GenerateForm(QWidget):
         layout_ablation.addRow(QLabel("Pulses"), self.number_pulses_input[create_index])
         
         if self.version == 'plume':
+            self.button_move_pre = QPushButton(self)
+    #         self.button_folder.setFixedSize(300, self.window_height)
+            self.button_move_pre.setText("Move Videos To Pre-ablation Folder")
+            self.button_move_pre.clicked.connect(lambda: self.move_to_folder(pre=True))
+            layout.addWidget(self.button_move_pre, 2, 2)  
+        
+        
             self.button_move = QPushButton(self)
     #         self.button_folder.setFixedSize(300, self.window_height)
             self.button_move.setText("Move Videos To Ablation Folder")
             self.button_move.clicked.connect(lambda: self.move_to_folder(pre=False))
-            layout.addWidget(self.button_move, 3, 1)  
-        
+            layout.addWidget(self.button_move, 2, 3)  
         return layout
+
+    def pack_to_hdf5_and_upload_with_popwindow(self, path, file_name, info_dict):
+        self.show_message_window('Hdf5 file packed and uploaded to datafed!')
+        pack_to_hdf5_and_upload(path, file_name, info_dict)
+        
+    def show_message_window(self, message):
+        self.exPopup = message_window(message)
+        self.exPopup.setGeometry(500, 500, 400, 100)
+        self.exPopup.show()
+    
+    
+    def convert_to_image(self):
+
+        '''
+        This is a function to convert raw plume file to readable images.
+        '''
+        print('This is button is not functional yet, please convert manually with README instruction.')
+        self.show_message_window('This is button is not functional yet, please convert manually with README instruction.')
+        
+
+    def move_to_folder(self, pre):
+
+        '''
+        This is a function to move plumes in default folder of acquisition software to target folder.
+
+        :param pre: if True, plume images will be moved to pre-ablation folder
+        :type pre: bool
+
+        '''
+
+        self.path = self.save_path_input.text() + '/'
+        
+        id = self.growth_id_input.text()
+        name = self.name_input.text()
+        date = ''.join(self.date_input.text().split('/'))
+        self.file_name = id + '_' + name + '_' + date
+
+        if not os.path.isdir(self.path+self.file_name):
+            os.mkdir(self.path+self.file_name)
+        
+        date_list = self.date_input.text().split('/')
+        date_m = date_list[2]+'_'+date_list[0]+'_'+date_list[1]
+        remove_desktop_ini(self.path)
+
+        file_list = glob.glob(self.path + date_m + '/*')
+        i = self.current_page
+        if pre:
+            dst = self.path+self.file_name+'/'+str(i+1)+'-'+self.target_input[i].text()+'_'+'Pre'
+            print('Saving videos to pre-ablation folder...')
+            
+        else:
+            dst = self.path+self.file_name+'/'+str(i+1)+'-'+self.target_input[i].text()
+            print('Saving videos to ablation folder...')
+            
+        if not os.path.isdir(dst):
+            os.mkdir(dst)
+            remove_desktop_ini(dst) # remove desktop.ini file from all sub-directory
+
+        for file in file_list:
+            shutil.move(file, dst)
+            
+        print('Done!')
+        self.show_message_window('Recorded videos moved to target folder!')
 
 
     def switchPage(self, i):
@@ -396,8 +414,6 @@ class GenerateForm(QWidget):
                                 "Notes": self.notes_input.toPlainText()}
                                 }
         
-
-        
         for i in range(10):
             info_dict['target_'+str(i+1)] = {
                         "Target Material": self.target_input[i].text(),
@@ -412,17 +428,17 @@ class GenerateForm(QWidget):
                         "Measured Energy Mean(mJ)": self.energy_mean_input[i].text(),
                         "Measured Energy Std(mJ)": self.energy_std_input[i].text(),
 
-                        "Pre-Temperature(\N{DEGREE SIGN}C)": self.pre_temperature_input[i].text(),
-                        "Pre-Pressure(mTorr)": self.pre_pressure_input[i].text(),
-                        "Pre-Gas Atmosphere": self.pre_gas_input[i].currentText(),
-                        "Pre-Frequency(Hz)": self.pre_frequency_input[i].text(),
-                        "Pre-Pulses": self.pre_number_pulses_input[i].text(),           
+                        "Pre-Ablation-Temperature(\N{DEGREE SIGN}C)": self.pre_temperature_input[i].text(),
+                        "Pre-Ablation-Pressure(mTorr)": self.pre_pressure_input[i].text(),
+                        "Pre-Ablation-Gas Atmosphere": self.pre_gas_input[i].currentText(),
+                        "Pre-Ablation-Frequency(Hz)": self.pre_frequency_input[i].text(),
+                        "Pre-Ablation-Pulses": self.pre_number_pulses_input[i].text(),           
 
-                        "Temperature(\N{DEGREE SIGN}C)": self.temperature_input[i].text(),
-                        "Pressure(mTorr)": self.pressure_input[i].text(),
-                        "Atmosphere Gas": self.gas_input[i].currentText(),
-                        "Frequency(Hz)": self.frequency_input[i].text(),
-                        "Pulses": self.number_pulses_input[i].text(),            
+                        "Ablation-Temperature(\N{DEGREE SIGN}C)": self.temperature_input[i].text(),
+                        "Ablation-Pressure(mTorr)": self.pressure_input[i].text(),
+                        "Ablation-Atmosphere Gas": self.gas_input[i].currentText(),
+                        "Ablation-Frequency(Hz)": self.frequency_input[i].text(),
+                        "Ablation-Pulses": self.number_pulses_input[i].text(),            
                                             }
         # clean the empty pairs
         for name in info_dict.keys():
@@ -438,14 +454,24 @@ class GenerateForm(QWidget):
         '''
         
         print('Saving dictionary...')
-        path = self.save_path_input.text() + '/'
+        self.path = self.save_path_input.text() + '/'
         
         id = self.growth_id_input.text()
         name = self.name_input.text()
         date = ''.join(self.date_input.text().split('/'))
-        file_name = id + '_' + name + '_' + date
+        self.file_name = id + '_' + name + '_' + date
         
-        self.info_dict = self.get_info()   
-        with open(path + '/' + file_name + '.json', 'w') as file:
+        self.info_dict = self.get_info()  
+        
+        # convert to float if possible
+        for k in self.info_dict.keys():
+            for kk in self.info_dict[k].keys():
+                try: self.info_dict[k][kk] = float(self.info_dict[k][kk])
+                except ValueError: pass
+            
+        with open(self.path + '/' + self.file_name + '.json', 'w') as file:
             json.dump(self.info_dict, file)     
         print('Done!')
+        
+        self.show_message_window('Parameters saved!')
+        

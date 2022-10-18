@@ -10,7 +10,7 @@ from datafed.CommandLib import API
 from PyQt5.QtGui import QFont 
 from PyQt5.QtCore import * 
 from PyQt5.QtWidgets import * 
-sys.path.append('C:/Image/PLD_Workflow/')
+sys.path.append('../')
 from PLDForm import GenerateForm
 
 

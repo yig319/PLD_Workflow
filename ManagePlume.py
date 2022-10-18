@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from datafed.CommandLib import API
 
 def remove_desktop_ini(path):
-
     '''
     This function is designed to remove "desktop.ini" file in 4 sub-directories under given path 
 
@@ -16,32 +15,46 @@ def remove_desktop_ini(path):
     :type path: str
 
     '''
+    for p, subdirs, files in os.walk(path):
+        for name in files:
+            if name[-3:] == 'ini':
+                os.remove(os.path.join(p, name))
 
-    if path[-1] == '/': path = path[:-1]
+# def remove_desktop_ini(path):
+
+#     '''
+#     This function is designed to remove "desktop.ini" file in 4 sub-directories under given path 
+
+#     :param path: the path of target directory
+#     :type path: str
+
+#     '''
+
+#     if path[-1] == '/': path = path[:-1]
         
-    # level 1
-    if os.path.isdir(path):
-        for folder_1 in glob.glob(path+'/*'):
-            if folder_1.split('/')[-1].split('\\')[-1] == 'desktop.ini':
-                os.remove(folder_1)  
+#     # level 1
+#     if os.path.isdir(path):
+#         for folder_1 in glob.glob(path+'/*'):
+#             if folder_1.split('/')[-1].split('\\')[-1] == 'desktop.ini':
+#                 os.remove(folder_1)  
 
-            # level 2
-            if os.path.isdir(folder_1):
-                for folder_2 in glob.glob(folder_1+'/*'):
-                    if folder_2.split('/')[-1].split('\\')[-1] == 'desktop.ini':
-                        os.remove(folder_2)  
+#             # level 2
+#             if os.path.isdir(folder_1):
+#                 for folder_2 in glob.glob(folder_1+'/*'):
+#                     if folder_2.split('/')[-1].split('\\')[-1] == 'desktop.ini':
+#                         os.remove(folder_2)  
 
-                    # level 3
-                    if os.path.isdir(folder_2):
-                        for folder_3 in glob.glob(folder_2+'/*'):
-                            if folder_3.split('/')[-1].split('\\')[-1] == 'desktop.ini':
-                                os.remove(folder_3)  
+#                     # level 3
+#                     if os.path.isdir(folder_2):
+#                         for folder_3 in glob.glob(folder_2+'/*'):
+#                             if folder_3.split('/')[-1].split('\\')[-1] == 'desktop.ini':
+#                                 os.remove(folder_3)  
 
-                            # level 4
-                            if os.path.isdir(folder_3):
-                                for folder_4 in glob.glob(folder_3+'/*'):
-                                    if folder_4.split('/')[-1].split('\\')[-1] == 'desktop.ini':
-                                        os.remove(folder_4) 
+#                             # level 4
+#                             if os.path.isdir(folder_3):
+#                                 for folder_4 in glob.glob(folder_3+'/*'):
+#                                     if folder_4.split('/')[-1].split('\\')[-1] == 'desktop.ini':
+#                                         os.remove(folder_4) 
                                         
                                         
 def pack_to_hdf5_and_upload(file_path, file_name, growth_para):
@@ -102,16 +115,21 @@ def pack_to_hdf5(file_path, file_name):
         # remove desktop.ini file from all sub-directory
         remove_desktop_ini(ds_path)
 
-        for target_folder in os.listdir(ds_path+'/'):
+        if ds_path[-1]!='/': ds_path = ds_path+'/'
+        for target_folder in os.listdir(ds_path):
             if target_folder == '.ipynb_checkpoints': continue 
 
             length_list = []
             target_path = ds_path + '/' + target_folder
 
             if os.listdir(target_path) == []:
-                os.rmdir(target_path)                
+                continue               
             
             # define the image shape
+            if not os.path.isdir(target_path + '/BMP'):
+                print('Please convert raw videos in this folder: ', target_path, 'to images first!')
+                return 
+                
             for plume_folder in os.listdir(target_path + '/BMP'):
                 length_list.append(len(os.listdir(target_path + '/BMP/' + plume_folder)))
                 img_shape = plt.imread(glob.glob(target_path+'/BMP/'+plume_folder+'/*')[0]).shape
