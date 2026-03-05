@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pld-workflow"
+version = "0.1.0"
+description = "Desktop form for recording PLD growth parameters"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "PyQt5>=5.15.6,<6",
+]
+
+[project.scripts]
+pld-parameter-form = "pld_workflow.app:main"
+
+[project.optional-dependencies]
+build = [
+  "pyinstaller>=6.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["pld_workflow*"]

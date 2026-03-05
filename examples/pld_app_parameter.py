@@ -1,29 +1,21 @@
-import shutil
+"""Launcher script for the parameter-only PLD form.
+
+Usage
+-----
+Run from repository root:
+
+    python examples/pld_app_parameter.py
+"""
+
 import sys
-import json
-import datetime
-import os, glob, h5py
-import numpy as np
-import matplotlib.pyplot as plt
-from datafed.CommandLib import API
+from pathlib import Path
 
-from PyQt5.QtGui import QFont 
-from PyQt5.QtCore import * 
-from PyQt5.QtWidgets import * 
-sys.path.append('../')
-from PLDForm import GenerateForm
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_PATH = REPO_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
 
+from pld_workflow.app import main
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    custom_font = QFont("Times", 10)
-
-    app.setFont(custom_font, "QGroupBox")
-    app.setFont(custom_font, "QComboBox")
-    app.setFont(custom_font, "QLabel")
-    app.setFont(custom_font, "QLineEdit")
-    app.setFont(custom_font, "QPlainTextEdit")
-
-    window = GenerateForm(version="parameter")
-    window.show()
-    app.exec_()
+    raise SystemExit(main())
