@@ -1,0 +1,19 @@
+.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Packaging/build output
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# PyInstaller
+*.spec
+
+# Local environments
+.venv/
+venv/

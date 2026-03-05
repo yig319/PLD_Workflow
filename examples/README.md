@@ -1,24 +1,15 @@
-# Utility functions for Pulsed Laser Deposition
+# Examples
 
-## pld_functions.py: 
+## `pld_app_parameter.py`
 
-  Include a digital form for growth condition recording and plume imaging management.
+Compatibility launcher for the parameter form.
 
-  Usage: 
+```bash
+python examples/pld_app_parameter.py
+```
 
-  1. For condition recording only: 
-    
-    if __name__ == "__main__":
-      app = QApplication(sys.argv)
-      window = PLD_Form(version="parameter")
-      window.show()
-      app.exec_()
+Preferred installed command:
 
-  2. With plume recording and management: 
-  
-    if __name__ == "__main__":
-      app = QApplication(sys.argv)
-      window = PLD_Form(version="plume")
-      window.show()
-      app.exec_()
-      
+```bash
+pld-parameter-form
+```

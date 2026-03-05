@@ -1,7 +1,7 @@
-utils module
-============
+pld_workflow.utils module
+=========================
 
-.. automodule:: utils
+.. automodule:: pld_workflow.utils
    :members:
    :undoc-members:
    :show-inheritance:

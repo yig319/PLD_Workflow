@@ -5,7 +5,6 @@ PLD_Workflow
    :maxdepth: 4
 
    intro
-   ManagePlume
    PLDForm
    PlumeEvaluation
    utils
