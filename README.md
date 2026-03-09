@@ -19,6 +19,83 @@ python -m pld_workflow
 python examples/pld_app_parameter.py
 ```
 
+## Raw XRD/AFM Visualization
+
+Raw-data visualization is now a **separate app** from the parameter form.
+Launch it with:
+
+```bash
+pld-raw-visualizer
+```
+
+or from source:
+
+```bash
+python examples/pld_app_visualizer.py
+```
+
+The visualizer provides three square blocks (XRD scan, RSM, and AFM) with:
+
+- drag-and-drop loading
+- clickable drag area to open file dialog
+- embedded preview (when the visualizer returns an image/figure/array)
+- `Copy Image` button for clipboard paste into OneNote/PowerPoint/docs
+- `Export PNG` button to save the current preview image
+
+File expectations:
+
+- AFM: `.ibw`
+- XRD scan: `.xrdml` (and compatible xrdutilities-readable formats)
+- RSM: `.xrdml` / `.xml`
+
+Note: `XRD-utils` uses `xrayutilities` for file loading. If your environment
+does not include it, install `xrayutilities` as well.
+
+If the external package opens its own plot window and does not return image data,
+the app shows a status message and keeps using the external window behavior.
+
+Required packages for this feature:
+
+```bash
+python -m pip install ".[visualization]"
+```
+
+Equivalent direct install:
+
+```bash
+python -m pip install XRD-utils AFM-tools
+```
+
+### Linux Troubleshooting (`GLIBCXX_3.4.29 not found`)
+
+If AFM/XRD visualization fails with a message like `GLIBCXX_3.4.29 not found`,
+your C++ runtime does not match the wheel binaries.
+
+Use one conda environment consistently and refresh runtime libs:
+
+```bash
+conda activate pld
+conda install -n pld -c conda-forge libstdcxx-ng libgcc-ng
+python -m pip install --upgrade --force-reinstall --no-cache-dir \
+  numpy scipy matplotlib AFM-tools XRD-utils xrayutilities
+```
+
+If you launch from VS Code, select interpreter:
+
+- `/home/yichen/anaconda3/envs/pld/bin/python`
+
+### `mayavi` install failure (`Failed building wheel for mayavi`)
+
+This is common on Linux when installing with `pip` because it tries to compile
+VTK/Mayavi locally. For this app, `mayavi` is not required for the AFM 2D path.
+
+If you still need `mayavi` for 3D workflows, install via conda binaries:
+
+```bash
+conda activate pld
+conda install -n pld -c conda-forge mayavi vtk pyqt
+```
+
 ## Windows `.exe` Build
 
 For users who should run without installing Python, build and distribute an executable:
@@ -71,7 +148,7 @@ Linux output:
 ## Current App Scope
 
 - Parameter recording form only.
-- JSON export through "Save Parameters".
+- JSON and HTML export through "Save Parameters".
 - Output file is saved under the path in the "Directory" field.
 
 ## Camera Position Calibration (lab workflow)

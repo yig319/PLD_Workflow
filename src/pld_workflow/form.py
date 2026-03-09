@@ -6,7 +6,6 @@ This module supports parameter capture plus JSON and HTML export.
 from __future__ import annotations
 
 import datetime
-import html
 import json
 import os
 from typing import Any, Dict, List
@@ -27,6 +26,8 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .parameter_export import build_default_file_stem, save_parameters_json_and_html
 
 
 class MessageWindow(QWidget):
@@ -771,381 +772,31 @@ class GenerateForm(QWidget):
 
         return info_dict
 
-    @staticmethod
-    def _coerce_float(value: Any) -> Any:
-        """Return a float when text is numeric; otherwise return original text."""
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return value
-
-    @staticmethod
-    def _has_nested_container(value: Any) -> bool:
-        """Return True when dict/list contains nested dict/list values."""
-        if isinstance(value, dict):
-            for item in value.values():
-                if isinstance(item, (dict, list)) or GenerateForm._has_nested_container(item):
-                    return True
-            return False
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, (dict, list)) or GenerateForm._has_nested_container(item):
-                    return True
-            return False
-        return False
-
-    @staticmethod
-    def _flatten_rows(value: Any, prefix: str = "") -> List[Dict[str, Any]]:
-        """Flatten nested dict/list data into parameter/value rows."""
-        rows: List[Dict[str, Any]] = []
-        if isinstance(value, dict):
-            for key, item in value.items():
-                key_path = f"{prefix}.{key}" if prefix else str(key)
-                rows.extend(GenerateForm._flatten_rows(item, key_path))
-            return rows
-
-        if isinstance(value, list):
-            if not value:
-                rows.append({"parameter": prefix, "value": ""})
-                return rows
-            for index, item in enumerate(value):
-                key_path = f"{prefix}[{index}]"
-                rows.extend(GenerateForm._flatten_rows(item, key_path))
-            return rows
-
-        rows.append({"parameter": prefix, "value": value})
-        return rows
-
-    @staticmethod
-    def _to_table_rows(data: Any):
-        """Convert input data into simple headers/rows for table rendering."""
-        if isinstance(data, dict):
-            if GenerateForm._has_nested_container(data):
-                flat = GenerateForm._flatten_rows(data)
-                return ["parameter", "value"], [[r["parameter"], r["value"]] for r in flat]
-            return ["parameter", "value"], [[k, v] for k, v in data.items()]
-
-        if isinstance(data, list):
-            if data and all(isinstance(item, dict) and not GenerateForm._has_nested_container(item) for item in data):
-                headers: List[str] = []
-                for item in data:
-                    for key in item.keys():
-                        if key not in headers:
-                            headers.append(key)
-                rows = [[item.get(h, "") for h in headers] for item in data]
-                return headers, rows
-
-            if any(isinstance(item, (dict, list)) for item in data):
-                flat = GenerateForm._flatten_rows(data)
-                return ["parameter", "value"], [[r["parameter"], r["value"]] for r in flat]
-
-            return ["value"], [[item] for item in data]
-
-        return ["value"], [[data]]
-
-    @staticmethod
-    def _render_html_table(headers: List[str], rows: List[List[Any]], show_header: bool = False) -> str:
-        """Build HTML markup for one data table."""
-        header_cells = "".join(f"<th>{html.escape(str(item))}</th>" for item in headers)
-        row_markup: List[str] = []
-        for row in rows:
-            cells = "".join(f"<td>{html.escape(str(item))}</td>" for item in row)
-            row_markup.append(f"<tr>{cells}</tr>")
-        colspan = max(1, len(headers))
-        body = "".join(row_markup) if row_markup else f"<tr><td colspan='{colspan}'>&nbsp;</td></tr>"
-        if show_header:
-            return f"<table><thead><tr>{header_cells}</tr></thead><tbody>{body}</tbody></table>"
-        return f"<table><tbody>{body}</tbody></table>"
-
-    @staticmethod
-    def _target_section_spec() -> List[tuple[str, List[str]]]:
-        """Return ordered target section definitions used in HTML export."""
-        return [
-            (
-                "Target Parameters",
-                [
-                    "Target Material",
-                    "Offset X (mm)",
-                    "Offset Y (mm)",
-                    "Scan Diameter (mm)",
-                    "Scan Speed X/Z (mm/s)",
-                ],
-            ),
-            (
-                "Heater Parameter",
-                [
-                    "Heater Position X (mm)",
-                    "Heater Position Y (mm)",
-                    "Heater Position Z (mm)",
-                    "Tilt (deg)",
-                    "Azimuth (deg)",
-                ],
-            ),
-            (
-                "Laser and Mask",
-                [
-                    "Laser Voltage (kV)",
-                    "Laser Energy (mJ)",
-                    "Targeted Measured Energy (mJ)",
-                    "Fluence (J/cm^2)",
-                ],
-            ),
-            (
-                "Mask and Spot",
-                [
-                    "Mask Width (mm)",
-                    "Mask Height (mm)",
-                    "Mask Area (mm^2)",
-                    "Spot Width (mm)",
-                    "Spot Height (mm)",
-                    "Spot Area (mm^2)",
-                    "Magnification (x)",
-                ],
-            ),
-            (
-                "Pre-annealing",
-                [
-                    "Pre-Annealing Temperature (\N{DEGREE SIGN}C)",
-                    "Pre-Annealing Heating Speed (\N{DEGREE SIGN}C/min)",
-                    "Pre-Annealing Time (min)",
-                    "Pre-Annealing Atmosphere Pressure (mTorr)",
-                ],
-            ),
-            (
-                "Ablation",
-                [
-                    "Pre-Ablation Pulses (count)",
-                    "Ablation Temperature (\N{DEGREE SIGN}C)",
-                    "Ablation Pressure (mTorr)",
-                    "Ablation Atmosphere Gas",
-                    "Ablation Frequency (Hz)",
-                    "Ablation Pulses (count)",
-                ],
-            ),
-        ]
-
-    @staticmethod
-    def _render_target_sections(target_data: Dict[str, Any]) -> str:
-        """Render grouped target tables by form section for HTML output."""
-        sections: List[str] = []
-        used_keys: set[str] = set()
-
-        for section_title, section_keys in GenerateForm._target_section_spec():
-            rows = [[key, target_data[key]] for key in section_keys if key in target_data]
-            if not rows:
-                continue
-            used_keys.update(key for key in section_keys if key in target_data)
-            table_markup = GenerateForm._render_html_table(["parameter", "value"], rows)
-            sections.append(
-                "<section class='subcard'>"
-                f"<h3>{html.escape(section_title)}</h3>"
-                f"{table_markup}"
-                "</section>"
-            )
-
-        remaining_rows = [[key, value] for key, value in target_data.items() if key not in used_keys]
-        if remaining_rows:
-            table_markup = GenerateForm._render_html_table(["parameter", "value"], remaining_rows)
-            sections.append(
-                "<section class='subcard'>"
-                "<h3>Other</h3>"
-                f"{table_markup}"
-                "</section>"
-            )
-
-        return "".join(sections)
-
-    @staticmethod
-    def _write_html(file_path: str, data: Any) -> None:
-        """Write form data to a styled HTML report for OneNote import."""
-        cards: List[str] = []
-        if isinstance(data, dict):
-            header_data = data.get("header")
-            if isinstance(header_data, dict):
-                headers, rows = GenerateForm._to_table_rows(header_data)
-                cards.append(
-                    "<section class='card'>"
-                    "<h2>Header</h2>"
-                    f"{GenerateForm._render_html_table(headers, rows)}"
-                    "</section>"
-                )
-
-            target_keys = [key for key in data.keys() if key.lower().startswith("target_")]
-            target_keys.sort(key=lambda key: int(key.split("_")[1]) if key.split("_")[1].isdigit() else key)
-            for target_key in target_keys:
-                target_data = data.get(target_key)
-                if not isinstance(target_data, dict):
-                    headers, rows = GenerateForm._to_table_rows(target_data)
-                    target_markup = GenerateForm._render_html_table(headers, rows)
-                else:
-                    target_markup = f"<div class='section-grid'>{GenerateForm._render_target_sections(target_data)}</div>"
-
-                cards.append(
-                    "<section class='card'>"
-                    f"<h2>{html.escape(target_key.replace('_', ' ').title())}</h2>"
-                    f"{target_markup}"
-                    "</section>"
-                )
-
-            other_sections = [
-                (key, value)
-                for key, value in data.items()
-                if key != "header" and key not in target_keys
-            ]
-            for section_name, section_data in other_sections:
-                headers, rows = GenerateForm._to_table_rows(section_data)
-                cards.append(
-                    "<section class='card'>"
-                    f"<h2>{html.escape(str(section_name))}</h2>"
-                    f"{GenerateForm._render_html_table(headers, rows)}"
-                    "</section>"
-                )
-        else:
-            headers, rows = GenerateForm._to_table_rows(data)
-            cards.append(
-                "<section class='card'>"
-                "<h2>Parameters</h2>"
-                f"{GenerateForm._render_html_table(headers, rows)}"
-                "</section>"
-            )
-
-        page_title = "PLD Growth Parameters"
-        now_stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        document = f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(page_title)}</title>
-  <style>
-    :root {{
-      --bg: #f4f7fb;
-      --card: #ffffff;
-      --line: #d8e1ec;
-      --text: #182230;
-      --muted: #526178;
-      --head: #ebf2f9;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      padding: 24px;
-      background: var(--bg);
-      color: var(--text);
-      font-family: "Segoe UI", Calibri, Arial, sans-serif;
-    }}
-    h1 {{
-      margin: 0 0 6px 0;
-      font-size: 28px;
-    }}
-    .meta {{
-      margin-bottom: 18px;
-      color: var(--muted);
-      font-size: 14px;
-    }}
-    .grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 14px;
-      align-items: start;
-    }}
-    .card {{
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 12px;
-    }}
-    .card h2 {{
-      margin: 0 0 10px 0;
-      font-size: 18px;
-      color: #243955;
-    }}
-    .section-grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 10px;
-    }}
-    .subcard {{
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px;
-      background: #fbfdff;
-    }}
-    .subcard h3 {{
-      margin: 0 0 8px 0;
-      font-size: 14px;
-      color: #2d4b72;
-      letter-spacing: 0.2px;
-    }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }}
-    th, td {{
-      border: 1px solid var(--line);
-      padding: 6px 8px;
-      vertical-align: top;
-      word-break: break-word;
-    }}
-    th {{
-      background: var(--head);
-      text-transform: capitalize;
-      font-weight: 600;
-    }}
-  </style>
-</head>
-<body>
-  <h1>{html.escape(page_title)}</h1>
-  <div class="meta">Exported: {html.escape(now_stamp)}</div>
-  <main class="grid">
-    {''.join(cards)}
-  </main>
-</body>
-</html>
-"""
-        with open(file_path, "w", encoding="utf-8") as handle:
-            handle.write(document)
-
     def _default_file_stem(self) -> str:
         """Build output file stem from core header fields."""
-        growth_id = self.growth_id_input.text().strip()
-        user_name = self.name_input.text().strip()
-        date_stamp = "".join(self.date_input.text().split("/")).strip()
-
-        if growth_id or user_name:
-            return f"{growth_id}_{user_name}_{date_stamp}".strip("_")
-
-        if not date_stamp:
-            date_stamp = datetime.datetime.today().strftime("%m%d%Y")
-        return f"growth_record_{date_stamp}"
+        return build_default_file_stem(
+            self.growth_id_input.text(),
+            self.name_input.text(),
+            self.date_input.text(),
+        )
 
     def save(self) -> None:
         """Serialize the current form state to JSON and HTML files."""
         print("Saving dictionary...")
 
         output_dir = self.save_path_input.text().strip() or os.getcwd()
-        os.makedirs(output_dir, exist_ok=True)
 
         self.file_name = self._default_file_stem()
         self.path = output_dir
 
         self.info_dict = self.get_info()
-        for section in self.info_dict.values():
-            for key, value in list(section.items()):
-                section[key] = self._coerce_float(value)
+        save_result = save_parameters_json_and_html(self.info_dict, output_dir, self.file_name)
 
-        output_file = os.path.join(output_dir, f"{self.file_name}.json")
-        with open(output_file, "w", encoding="utf-8") as file:
-            json.dump(self.info_dict, file)
-
-        html_file = os.path.join(output_dir, f"{self.file_name}.html")
-        try:
-            self._write_html(html_file, self.info_dict)
-            print(f"Done! Saved: {output_file}")
-            print(f"Done! Saved: {html_file}")
+        print(f"Done! Saved: {save_result.json_path}")
+        if save_result.html_path:
+            print(f"Done! Saved: {save_result.html_path}")
             self.show_message_window("Parameters saved to JSON and HTML!")
-        except Exception as exc:
-            print(f"Done! Saved: {output_file}")
-            print(f"HTML export failed: {exc}")
-            self.show_message_window(f"JSON saved. HTML export failed: {exc}")
+            return
+
+        print(f"HTML export failed: {save_result.html_error}")
+        self.show_message_window(f"JSON saved. HTML export failed: {save_result.html_error}")
