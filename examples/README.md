@@ -1,5 +1,13 @@
 # Examples
 
+For fresh environment setup, use the pip-preferred instructions in the top-level
+README: [README.md](../README.md) under `Fresh Conda Env (pip-preferred)`.
+One-command install from repo root:
+
+```bash
+python -m pip install -r requirements-pip.txt
+```
+
 ## `pld_app_parameter.py`
 
 Compatibility launcher for the parameter form.
@@ -37,10 +45,10 @@ Inside each block, use:
 - `Copy Image` to copy the embedded figure to clipboard
 - `Export PNG` to save a figure file
 
-Optional raw-data visualization dependencies:
+All-in-one repo dependencies (runtime + visualizer + build):
 
 ```bash
-python -m pip install ".[visualization]"
+python -m pip install -r requirements-pip.txt
 ```
 
 If Linux shows `GLIBCXX_3.4.29 not found`, run:

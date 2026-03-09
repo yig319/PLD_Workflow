@@ -11,7 +11,7 @@ From the repository root:
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install .
+python -m pip install -r requirements-pip.txt
 ```
 
 Run the app:
@@ -53,7 +53,7 @@ Build output:
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install ".[build]"
+python -m pip install -r requirements-pip.txt
 python -m PyInstaller --noconfirm --clean --windowed --name PLDParameterForm --collect-all PyQt5 --paths src src/pld_workflow/app.py
 ```
 

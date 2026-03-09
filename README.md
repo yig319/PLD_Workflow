@@ -8,7 +8,7 @@ From the repository root:
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install .
+python -m pip install -r requirements-pip.txt
 pld-parameter-form
 ```
 
@@ -18,6 +18,32 @@ Alternative launch commands:
 python -m pld_workflow
 python examples/pld_app_parameter.py
 ```
+
+## Fresh Conda Env (pip-preferred)
+
+Use this when starting from a clean machine/user environment.
+
+```bash
+conda create -n pld_clean python=3.10 -y
+conda activate pld_clean
+
+# run from repository root
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements-pip.txt
+```
+
+Run apps:
+
+```bash
+python examples/pld_app_parameter.py
+python examples/pld_app_visualizer.py
+```
+
+Important:
+
+- Keep this environment pip-managed for Qt/PyQt (do not mix `conda install pyqt` with `pip install PyQt5` in the same env).
+- In VS Code, select the interpreter from this env (for example: `/home/yichen/anaconda3/envs/pld_clean/bin/python`).
+- `requirements-pip.txt` installs runtime + visualizer + build dependencies.
 
 ## Raw XRD/AFM Visualization
 
@@ -54,16 +80,17 @@ does not include it, install `xrayutilities` as well.
 If the external package opens its own plot window and does not return image data,
 the app shows a status message and keeps using the external window behavior.
 
-Required packages for this feature:
+All-in-one install (runtime + visualizer + build):
 
 ```bash
-python -m pip install ".[visualization]"
+python -m pip install -r requirements-pip.txt
 ```
 
-Equivalent direct install:
+Visualization-only install:
 
 ```bash
-python -m pip install XRD-utils AFM-tools
+python -m pip install -e ".[visualization]"
+python -m pip install xrayutilities
 ```
 
 ### Linux Troubleshooting (`GLIBCXX_3.4.29 not found`)
@@ -114,7 +141,7 @@ Manual build command (directly from the Python entry file):
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install ".[build]"
+python -m pip install -r requirements-pip.txt
 python -m PyInstaller --noconfirm --clean --windowed --name PLDParameterForm --paths src src/pld_workflow/app.py
 ```
 
@@ -137,7 +164,7 @@ On Linux, you can build a Linux executable:
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install ".[build]"
+python -m pip install -r requirements-pip.txt
 python -m PyInstaller --noconfirm --clean --windowed --name PLDParameterForm --paths src src/pld_workflow/app.py
 ```
 
