@@ -125,30 +125,55 @@ conda install -n pld -c conda-forge mayavi vtk pyqt
 
 ## Windows `.exe` Build
 
-For users who should run without installing Python, build and distribute an executable:
+For users who should run without installing Python, build and distribute executables for both apps (PLD form + raw visualizer):
 
 ```powershell
-./scripts/build_windows_exe.ps1
+python scripts/build_windows_exe.py
 ```
 
 Single-file build:
 
 ```powershell
-./scripts/build_windows_exe.ps1 -OneFile
+python scripts/build_windows_exe.py --onefile
 ```
 
-Manual build command (directly from the Python entry file):
+If build fails with `The 'pathlib' package is an obsolete backport`, remove it from your active environment and rebuild:
+
+```powershell
+conda remove pathlib
+# or, if using a non-conda env:
+python -m pip uninstall pathlib
+```
+
+Pre-build smoke test (same entry wrappers used by the `.exe` build):
+
+```powershell
+python scripts/pyinstaller_entry_pld_form.py
+python scripts/pyinstaller_entry_pld_visualizer.py
+```
+
+These wrapper scripts are not tests. They are the runtime entrypoints used by PyInstaller.
+Running them directly is the closest source-run match to built `.exe` startup behavior.
+
+Manual build commands (directly from the Python entry files):
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install -r requirements-pip.txt
-python -m PyInstaller --noconfirm --clean --windowed --name PLDParameterForm --paths src src/pld_workflow/app.py
+python -m pip install --upgrade --force-reinstall ".[visualization,build]" xrayutilities
+python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDParameterForm scripts/pyinstaller_entry_pld_form.py
+python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDRawVisualizer scripts/pyinstaller_entry_pld_visualizer.py
 ```
 
 Output:
 
-- Folder build: `dist/PLDParameterForm/PLDParameterForm.exe`
-- Single file (if adding `--onefile`): `dist/PLDParameterForm.exe`
+- Folder build:
+  - `dist/PLDParameterForm/PLDParameterForm.exe`
+  - `dist/PLDRawVisualizer/PLDRawVisualizer.exe`
+- Single file (if adding `--onefile`):
+  - `dist/PLDParameterForm.exe`
+  - `dist/PLDRawVisualizer.exe`
+
+Run only executables from `dist/`. Do not run files from `build/` (temporary files), which can cause missing `python310.dll` errors.
 
 Platform note:
 
@@ -165,7 +190,7 @@ On Linux, you can build a Linux executable:
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements-pip.txt
-python -m PyInstaller --noconfirm --clean --windowed --name PLDParameterForm --paths src src/pld_workflow/app.py
+python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDParameterForm scripts/pyinstaller_entry_pld_form.py
 ```
 
 Linux output:

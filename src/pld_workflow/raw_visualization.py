@@ -259,7 +259,7 @@ def _visualize_afm_with_tools(file_path: str) -> tuple[str, Any, str]:
     """Load/analyze/visualize AFM .ibw using AFM-tools functions."""
     from matplotlib import pyplot as plt
 
-    afm_RMS_roughness, convert_scan_setting, parse_ibw, AFMVisualizer = _import_afm_tools_symbols()
+    package_name, afm_RMS_roughness, convert_scan_setting, parse_ibw, AFMVisualizer = _import_afm_tools_symbols()
 
     imgs, sample_name, labels, scan_size = parse_ibw(file_path)
     if imgs.ndim != 3 or imgs.shape[2] == 0:
@@ -294,7 +294,7 @@ def _visualize_afm_with_tools(file_path: str) -> tuple[str, Any, str]:
     )
     fig.tight_layout()
 
-    backend = "afm_learn.afm_utils.parse_ibw + afm_learn.afm_viz.AFMVisualizer.viz"
+    backend = f"{package_name}.afm_utils.parse_ibw + {package_name}.afm_viz.AFMVisualizer.viz"
     detail = (
         f"AFM loaded: sample={sample_name}, channel={channel_name}, "
         f"RMS={rms:.4g} m"
@@ -302,46 +302,77 @@ def _visualize_afm_with_tools(file_path: str) -> tuple[str, Any, str]:
     return backend, fig, detail
 
 
-def _import_afm_tools_symbols() -> tuple[Callable[..., float], Callable[..., dict], Callable[..., Any], type]:
+def _import_afm_tools_symbols() -> tuple[str, Callable[..., float], Callable[..., dict], Callable[..., Any], type]:
     """Import the AFM-tools APIs used by the visualizer.
 
-    AFM-tools currently imports `mayavi` from `afm_learn.__init__`, even though
+    AFM-tools may import `mayavi` from package `__init__`, even though
     the 2D visualization path used here does not need it. This loader first
     tries normal imports and, if that fails due to missing `mayavi`, it bypasses
     package `__init__` and imports only required submodules.
     """
-    try:
-        from afm_learn.afm_image_analyzer import afm_RMS_roughness
-        from afm_learn.afm_utils import convert_scan_setting, parse_ibw
-        from afm_learn.afm_viz import AFMVisualizer
-        return afm_RMS_roughness, convert_scan_setting, parse_ibw, AFMVisualizer
-    except ModuleNotFoundError as exc:
-        if exc.name != "mayavi":
+    candidate_packages = ("afm_tools", "afm_learn")
+    last_error: Optional[Exception] = None
+
+    for package_name in candidate_packages:
+        try:
+            afm_img = importlib.import_module(f"{package_name}.afm_image_analyzer")
+            afm_utils = importlib.import_module(f"{package_name}.afm_utils")
+            afm_viz = importlib.import_module(f"{package_name}.afm_viz")
+            return (
+                package_name,
+                afm_img.afm_RMS_roughness,
+                afm_utils.convert_scan_setting,
+                afm_utils.parse_ibw,
+                afm_viz.AFMVisualizer,
+            )
+        except ModuleNotFoundError as exc:
+            # Optional 3D dependency; use targeted import path that bypasses package __init__.
+            if exc.name == "mayavi":
+                return _import_afm_tools_without_mayavi(package_name)
+            # If this candidate package itself is missing, keep trying.
+            if exc.name == package_name or (exc.name and exc.name.startswith(f"{package_name}.")):
+                last_error = exc
+                continue
             raise
-    return _import_afm_tools_without_mayavi()
+
+    if last_error is not None:
+        raise last_error
+    raise ModuleNotFoundError(
+        "AFM-tools package is not installed. Expected one of: afm_tools, afm_learn."
+    )
 
 
-def _import_afm_tools_without_mayavi() -> tuple[Callable[..., float], Callable[..., dict], Callable[..., Any], type]:
-    """Load AFM-tools submodules without executing `afm_learn.__init__`."""
-    afm_pkg_dir = _find_package_dir("afm_learn")
+def _import_afm_tools_without_mayavi(
+    package_name: str,
+) -> tuple[str, Callable[..., float], Callable[..., dict], Callable[..., Any], type]:
+    """Load AFM-tools submodules without executing package `__init__`."""
+    afm_pkg_dir = _find_package_dir(package_name)
     if afm_pkg_dir is None:
-        raise ModuleNotFoundError("AFM-tools package `afm_learn` is not installed.")
+        raise ModuleNotFoundError(
+            "AFM-tools package is not installed. Expected one of: afm_tools, afm_learn."
+        )
 
-    # Remove partially imported package state left by a failed `afm_learn` import.
+    # Remove partially imported package state left by a failed package import.
     for name in list(sys.modules):
-        if name == "afm_learn" or name.startswith("afm_learn."):
+        if name == package_name or name.startswith(f"{package_name}."):
             sys.modules.pop(name, None)
 
-    pkg = types.ModuleType("afm_learn")
+    pkg = types.ModuleType(package_name)
     pkg.__file__ = str(afm_pkg_dir / "__init__.py")
     pkg.__path__ = [str(afm_pkg_dir)]
-    sys.modules["afm_learn"] = pkg
+    sys.modules[package_name] = pkg
 
-    afm_utils = importlib.import_module("afm_learn.afm_utils")
-    afm_viz = importlib.import_module("afm_learn.afm_viz")
-    afm_img = importlib.import_module("afm_learn.afm_image_analyzer")
+    afm_utils = importlib.import_module(f"{package_name}.afm_utils")
+    afm_viz = importlib.import_module(f"{package_name}.afm_viz")
+    afm_img = importlib.import_module(f"{package_name}.afm_image_analyzer")
 
-    return afm_img.afm_RMS_roughness, afm_utils.convert_scan_setting, afm_utils.parse_ibw, afm_viz.AFMVisualizer
+    return (
+        package_name,
+        afm_img.afm_RMS_roughness,
+        afm_utils.convert_scan_setting,
+        afm_utils.parse_ibw,
+        afm_viz.AFMVisualizer,
+    )
 
 
 def _find_package_dir(package_name: str) -> Optional[Path]:
@@ -359,8 +390,12 @@ def _visualize_xrd_with_utils(file_path: str) -> tuple[str, Any, str]:
     """Load/analyze/visualize XRD scan using XRD-utils functions."""
     from matplotlib import pyplot as plt
     import numpy as np
-    from xrd_learn.xrd_utils import calculate_fwhm, detect_peaks, load_xrd_scan
-    from xrd_learn.xrd_viz import plot_xrd
+
+    package_name, xrd_utils, xrd_viz, _ = _import_xrd_tools_modules()
+    calculate_fwhm = xrd_utils.calculate_fwhm
+    detect_peaks = xrd_utils.detect_peaks
+    load_xrd_scan = xrd_utils.load_xrd_scan
+    plot_xrd = xrd_viz.plot_xrd
 
     x, y = load_xrd_scan(file_path)
     x = np.asarray(x)
@@ -395,7 +430,10 @@ def _visualize_xrd_with_utils(file_path: str) -> tuple[str, Any, str]:
         ax.scatter([float(peaks_x[0])], [float(peaks_y[0])], color="tab:red", s=12, zorder=5)
     fig.tight_layout()
 
-    backend = "xrd_learn.xrd_utils.load_xrd_scan/detect_peaks/calculate_fwhm + xrd_learn.xrd_viz.plot_xrd"
+    backend = (
+        f"{package_name}.xrd_utils.load_xrd_scan/detect_peaks/calculate_fwhm + "
+        f"{package_name}.xrd_viz.plot_xrd"
+    )
     detail = f"XRD loaded: {Path(file_path).name}, {peak_note}"
     return backend, fig, detail
 
@@ -404,7 +442,9 @@ def _visualize_rsm_with_utils(file_path: str) -> tuple[str, Any, str]:
     """Load and visualize reciprocal space map using XRD-utils."""
     from matplotlib import pyplot as plt
     import numpy as np
-    from xrd_learn.rsm_viz import RSMPlotter
+
+    package_name, _, _, rsm_viz = _import_xrd_tools_modules()
+    RSMPlotter = rsm_viz.RSMPlotter
 
     fig, ax = plt.subplots(figsize=(5.2, 4.0))
     plotter = RSMPlotter(
@@ -420,8 +460,32 @@ def _visualize_rsm_with_utils(file_path: str) -> tuple[str, Any, str]:
 
     intensity_arr = np.asarray(intensity)
     detail = f"RSM loaded: {Path(file_path).name}, grid={intensity_arr.shape}"
-    backend = "xrd_learn.rsm_viz.RSMPlotter.plot"
+    backend = f"{package_name}.rsm_viz.RSMPlotter.plot"
     return backend, fig, detail
+
+
+def _import_xrd_tools_modules() -> tuple[str, Any, Any, Any]:
+    """Import XRD-utils modules from new or legacy package names."""
+    candidate_packages = ("xrd_tools", "xrd_learn")
+    last_error: Optional[Exception] = None
+
+    for package_name in candidate_packages:
+        try:
+            xrd_utils = importlib.import_module(f"{package_name}.xrd_utils")
+            xrd_viz = importlib.import_module(f"{package_name}.xrd_viz")
+            rsm_viz = importlib.import_module(f"{package_name}.rsm_viz")
+            return package_name, xrd_utils, xrd_viz, rsm_viz
+        except ModuleNotFoundError as exc:
+            if exc.name == package_name or (exc.name and exc.name.startswith(f"{package_name}.")):
+                last_error = exc
+                continue
+            raise
+
+    if last_error is not None:
+        raise last_error
+    raise ModuleNotFoundError(
+        "XRD-utils package is not installed. Expected one of: xrd_tools, xrd_learn."
+    )
 
 
 def _dependency_troubleshooting_hint(exc: Exception) -> str:

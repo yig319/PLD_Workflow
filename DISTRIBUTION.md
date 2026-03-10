@@ -30,32 +30,46 @@ python -m pld_workflow
 
 Important: Python is needed on the build machine only. End users running the final `.exe` do not need Python.
 
-### Option A: One command script (recommended)
+### Option A: Python build script (recommended)
 
-From PowerShell in the repository root:
+From the repository root:
 
 ```powershell
-./scripts/build_windows_exe.ps1
+python scripts/build_windows_exe.py
 ```
 
 For a single-file executable:
 
 ```powershell
-./scripts/build_windows_exe.ps1 -OneFile
+python scripts/build_windows_exe.py --onefile
 ```
 
 Build output:
 
-- Folder mode: `dist/PLDParameterForm/PLDParameterForm.exe`
-- One-file mode: `dist/PLDParameterForm.exe`
+- Folder mode:
+  - `dist/PLDParameterForm/PLDParameterForm.exe`
+  - `dist/PLDRawVisualizer/PLDRawVisualizer.exe`
+- One-file mode:
+  - `dist/PLDParameterForm.exe`
+  - `dist/PLDRawVisualizer.exe`
+
+Pre-build smoke test using the same PyInstaller entry wrappers:
+
+```powershell
+python scripts/pyinstaller_entry_pld_form.py
+python scripts/pyinstaller_entry_pld_visualizer.py
+```
 
 ### Option B: Manual PyInstaller command
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install -r requirements-pip.txt
-python -m PyInstaller --noconfirm --clean --windowed --name PLDParameterForm --collect-all PyQt5 --paths src src/pld_workflow/app.py
+python -m pip install --upgrade --force-reinstall ".[visualization,build]" xrayutilities
+python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDParameterForm scripts/pyinstaller_entry_pld_form.py
+python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDRawVisualizer scripts/pyinstaller_entry_pld_visualizer.py
 ```
+
+Run executables from `dist/`, not from `build/` (temporary files).
 
 ## 3. Publishing suggestion
 
