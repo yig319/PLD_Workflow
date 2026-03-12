@@ -1,22 +1,25 @@
 # Examples
 
-For fresh environment setup, use the pip-preferred instructions in the top-level
-README: [README.md](../README.md) under `Fresh Conda Env (pip-preferred)`.
-One-command install from repo root:
+Use the top-level README for the primary install instructions.
+
+From a fresh clone, the recommended setup is:
 
 ```bash
-python -m pip install -r requirements-pip.txt
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
 ```
 
 ## `pld_app_parameter.py`
 
-Compatibility launcher for the parameter form.
+Runs the PLD parameter form.
 
 ```bash
 python examples/pld_app_parameter.py
 ```
 
-Preferred installed command:
+Installed command:
 
 ```bash
 pld-parameter-form
@@ -24,48 +27,16 @@ pld-parameter-form
 
 ## `pld_app_visualizer.py`
 
-Standalone raw-data visualizer for:
-
-- AFM `.ibw`
-- XRD scan files
-- RSM `.xrdml` / `.xml`
+Runs the raw-data visualizer for AFM, XRD scan, and RSM inputs.
 
 ```bash
 python examples/pld_app_visualizer.py
 ```
 
-Preferred installed command:
+Installed command:
 
 ```bash
 pld-raw-visualizer
 ```
 
-Inside each block, use:
-
-- `Copy Image` to copy the embedded figure to clipboard
-- `Export PNG` to save a figure file
-
-All-in-one repo dependencies (runtime + visualizer + build):
-
-```bash
-python -m pip install -r requirements-pip.txt
-```
-
-If Linux shows `GLIBCXX_3.4.29 not found`, run:
-
-```bash
-conda activate pld
-conda install -n pld -c conda-forge libstdcxx-ng libgcc-ng
-python -m pip install --upgrade --force-reinstall --no-cache-dir \
-  numpy scipy matplotlib AFM-tools XRD-utils xrayutilities
-```
-
-If `pip install mayavi` fails with `Failed building wheel for mayavi`:
-
-- `mayavi` is optional for this visualizer app.
-- For 3D tooling, install with conda instead:
-
-```bash
-conda activate pld
-conda install -n pld -c conda-forge mayavi vtk pyqt
-```
+`pld_app_parameter.py` prepends `src/` to `sys.path`, so it can import `pld_workflow.app` directly from the source tree without requiring an installed package.

@@ -1,9 +1,2 @@
-# Fresh pip-based install for this repository.
-# Run from repository root:
-#   python -m pip install -r requirements-pip.txt
-
--e .[visualization,build]
-xrayutilities
-
-# Optional (not required for current AFM 2D visualizer path):
-# mayavi
+# Backward-compatible convenience file for existing setup instructions.
+-r requirements-dev.txt

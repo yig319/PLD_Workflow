@@ -1,210 +1,104 @@
-# PLD_Workflow
+# pldflow
 
-Desktop application for recording PLD growth parameters.
+`pldflow` is a desktop workflow package for PLD parameter capture and raw-data visualization.
 
-## Quick Start (local Git checkout)
+PyPI package name: `pldflow`  
+Python import package: `pld_workflow`
+
+## Install from PyPI
+
+```bash
+python -m pip install pldflow
+```
+
+This installs the parameter form and exposes:
+
+```bash
+pld-parameter-form
+```
+
+## Development install from a Git clone
 
 From the repository root:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements-pip.txt
-pld-parameter-form
+python -m pip install -r requirements-dev.txt
 ```
 
-Alternative launch commands:
+This gives you an editable install of the package plus the optional analysis, visualization, docs, and build dependencies.
+
+Launch commands:
 
 ```bash
+pld-parameter-form
+pld-raw-visualizer
 python -m pld_workflow
 python examples/pld_app_parameter.py
-```
-
-## Fresh Conda Env (pip-preferred)
-
-Use this when starting from a clean machine/user environment.
-
-```bash
-conda create -n pld_clean python=3.10 -y
-conda activate pld_clean
-
-# run from repository root
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r requirements-pip.txt
-```
-
-Run apps:
-
-```bash
-python examples/pld_app_parameter.py
 python examples/pld_app_visualizer.py
 ```
 
-Important:
+## How `from pld_workflow.app import main` works
 
-- Keep this environment pip-managed for Qt/PyQt (do not mix `conda install pyqt` with `pip install PyQt5` in the same env).
-- In VS Code, select the interpreter from this env (for example: `/home/yichen/anaconda3/envs/pld_clean/bin/python`).
-- `requirements-pip.txt` installs runtime + visualizer + build dependencies.
+That import does not by itself mean the package is editable-installed. It works in three cases:
 
-## Raw XRD/AFM Visualization
+1. The package is installed normally with `pip install .` or `pip install pldflow`.
+2. The package is installed in editable mode with `pip install -e .`.
+3. The caller adds `src/` to `sys.path` before importing.
 
-Raw-data visualization is now a **separate app** from the parameter form.
-Launch it with:
+In this repository, `examples/pld_app_parameter.py` uses option 3. It prepends `src/` to `sys.path`, so you can run the example directly from the repo root even if the package is not installed. Using `pip install -r requirements-dev.txt` is still the cleaner setup for daily work.
 
-```bash
-pld-raw-visualizer
-```
+## Visualization dependencies
 
-or from source:
+The raw-data visualizer depends on the companion packages:
 
-```bash
-python examples/pld_app_visualizer.py
-```
+- `AFM-tools`
+- `XRD-utils`
+- `xrayutilities`
 
-The visualizer provides three square blocks (XRD scan, RSM, and AFM) with:
-
-- drag-and-drop loading
-- clickable drag area to open file dialog
-- embedded preview (when the visualizer returns an image/figure/array)
-- `Copy Image` button for clipboard paste into OneNote/PowerPoint/docs
-- `Export PNG` button to save the current preview image
-
-File expectations:
-
-- AFM: `.ibw`
-- XRD scan: `.xrdml` (and compatible xrdutilities-readable formats)
-- RSM: `.xrdml` / `.xml`
-
-Note: `XRD-utils` uses `xrayutilities` for file loading. If your environment
-does not include it, install `xrayutilities` as well.
-
-If the external package opens its own plot window and does not return image data,
-the app shows a status message and keeps using the external window behavior.
-
-All-in-one install (runtime + visualizer + build):
-
-```bash
-python -m pip install -r requirements-pip.txt
-```
-
-Visualization-only install:
+Those are included by `requirements-dev.txt` and by the package extra:
 
 ```bash
 python -m pip install -e ".[visualization]"
-python -m pip install xrayutilities
 ```
 
-### Linux Troubleshooting (`GLIBCXX_3.4.29 not found`)
+If you only want the form application, `PyQt5` is the only required runtime dependency.
 
-If AFM/XRD visualization fails with a message like `GLIBCXX_3.4.29 not found`,
-your C++ runtime does not match the wheel binaries.
+## Windows executable build
 
-Use one conda environment consistently and refresh runtime libs:
+PyInstaller build support is included through the `build` extra:
 
 ```bash
-conda activate pld
-conda install -n pld -c conda-forge libstdcxx-ng libgcc-ng
-python -m pip install --upgrade --force-reinstall --no-cache-dir \
-  numpy scipy matplotlib AFM-tools XRD-utils xrayutilities
-```
-
-If you launch from VS Code, select interpreter:
-
-- `/home/yichen/anaconda3/envs/pld/bin/python`
-
-### `mayavi` install failure (`Failed building wheel for mayavi`)
-
-This is common on Linux when installing with `pip` because it tries to compile
-VTK/Mayavi locally. For this app, `mayavi` is not required for the AFM 2D path.
-
-If you still need `mayavi` for 3D workflows, install via conda binaries:
-
-```bash
-conda activate pld
-conda install -n pld -c conda-forge mayavi vtk pyqt
-```
-
-## Windows `.exe` Build
-
-For users who should run without installing Python, build and distribute executables for both apps (PLD form + raw visualizer):
-
-```powershell
+python -m pip install -e ".[build,visualization]"
 python scripts/build_windows_exe.py
 ```
 
-Single-file build:
+Detailed packaging notes are in [DISTRIBUTION.md](DISTRIBUTION.md).
 
-```powershell
-python scripts/build_windows_exe.py --onefile
-```
+## Release workflow
 
-If build fails with `The 'pathlib' package is an obsolete backport`, remove it from your active environment and rebuild:
+GitHub Actions now follows the same release markers used in the AFM and XRD repos.
 
-```powershell
-conda remove pathlib
-# or, if using a non-conda env:
-python -m pip uninstall pathlib
-```
+- `#major` bumps `+1.0.0`
+- `#minor` bumps `+0.1.0`
+- `#patch` bumps `+0.0.1`
+- no marker runs CI only and does not publish
 
-Pre-build smoke test (same entry wrappers used by the `.exe` build):
+The workflow builds on every push and pull request to `main`. When a push to `main` contains one of the release markers, it creates the next `vX.Y.Z` tag and publishes to PyPI.
 
-```powershell
-python scripts/pyinstaller_entry_pld_form.py
-python scripts/pyinstaller_entry_pld_visualizer.py
-```
+Before the first automated publish, configure PyPI trusted publishing for the `pldflow` project so GitHub Actions is allowed to upload releases.
 
-These wrapper scripts are not tests. They are the runtime entrypoints used by PyInstaller.
-Running them directly is the closest source-run match to built `.exe` startup behavior.
+## Read the Docs
 
-Manual build commands (directly from the Python entry files):
+Docs build from `docs/source/` using `.readthedocs.yaml`. Read the Docs should install:
 
-```powershell
-python -m pip install --upgrade pip
-python -m pip install --upgrade --force-reinstall ".[visualization,build]" xrayutilities
-python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDParameterForm scripts/pyinstaller_entry_pld_form.py
-python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDRawVisualizer scripts/pyinstaller_entry_pld_visualizer.py
-```
+- `docs/requirements.txt`
+- the package itself from the repo root
 
-Output:
+## Current scope
 
-- Folder build:
-  - `dist/PLDParameterForm/PLDParameterForm.exe`
-  - `dist/PLDRawVisualizer/PLDRawVisualizer.exe`
-- Single file (if adding `--onefile`):
-  - `dist/PLDParameterForm.exe`
-  - `dist/PLDRawVisualizer.exe`
-
-Run only executables from `dist/`. Do not run files from `build/` (temporary files), which can cause missing `python310.dll` errors.
-
-Platform note:
-
-- PyInstaller builds for the current OS.
-- Running the build on Linux does **not** create a Windows `.exe`.
-- To get a Windows `.exe`, run the build on Windows (or a Windows CI runner).
-
-Detailed instructions are in [DISTRIBUTION.md](DISTRIBUTION.md).
-
-## Linux Build (for local testing)
-
-On Linux, you can build a Linux executable:
-
-```bash
-python -m pip install --upgrade pip
-python -m pip install -r requirements-pip.txt
-python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDParameterForm scripts/pyinstaller_entry_pld_form.py
-```
-
-Linux output:
-
-- `dist/PLDParameterForm/PLDParameterForm`
-
-## Current App Scope
-
-- Parameter recording form only.
-- JSON and HTML export through "Save Parameters".
-- Output file is saved under the path in the "Directory" field.
-
-## Camera Position Calibration (lab workflow)
-
-1. Open software `HPV-X` on desktop.
-2. Click `Live` and increase `EXPOSE` to `10,000,000 ns` to align focus.
-3. Decrease `EXPOSE` to `2,000,000 ns` and click `REC` before ablation.
+- Parameter form for PLD growth records
+- JSON and HTML export
+- Standalone raw-data visualizer for XRD, RSM, and AFM inputs

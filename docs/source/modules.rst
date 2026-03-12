@@ -1,10 +1,9 @@
-PLD_Workflow
-============
+API Reference
+=============
 
 .. toctree::
    :maxdepth: 4
 
-   intro
    PLDForm
    PlumeEvaluation
    utils

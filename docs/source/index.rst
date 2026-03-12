@@ -1,15 +1,15 @@
-.. PLD_Workflow documentation master file, created by
-   sphinx-quickstart on Wed May  4 15:48:00 2022.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+pldflow
+=======
 
-Welcome to PLD_Workflow's documentation!
-========================================
+Desktop workflow tools for PLD parameter capture and raw-data visualization.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Contents
 
+   intro
+   usage
+   release
    modules
 
 Indices and tables

@@ -1,0 +1,5 @@
+# Editable install with the optional dependencies used for development,
+# analysis, docs, packaging, and the raw-data visualizer.
+-e .[analysis,visualization,build,docs]
+pytest
+pytest-cov

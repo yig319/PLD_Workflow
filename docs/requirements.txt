@@ -1,0 +1,10 @@
+-r ../requirements.txt
+h5py
+hvplot
+matplotlib>=3.5
+numpy>=1.21
+pandas>=1.3
+scikit-image
+seaborn
+sphinx>=7.0
+pydata-sphinx-theme
