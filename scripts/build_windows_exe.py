@@ -14,7 +14,6 @@ import subprocess
 import sys
 
  
- 
 def run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
