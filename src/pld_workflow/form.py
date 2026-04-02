@@ -30,6 +30,18 @@ from PyQt5.QtWidgets import (
 from .parameter_export import build_default_file_stem, save_parameters_json_and_html
 
 
+class MessageWindow(QWidget):
+    """Small popup used to show short status messages to the user."""
+
+    def __init__(self, message: str):
+        super().__init__()
+        self.message = f"\n    {message}"
+        self._init_ui()
+
+    def _init_ui(self) -> None:
+        QLabel(self.message, self)
+
+
 class GenerateForm(QWidget):
     """Interactive PLD parameter form with dynamic target pages."""
 
@@ -247,10 +259,6 @@ class GenerateForm(QWidget):
         self.notes_layout.addRow(QLabel("Notes"), self.notes_input)
         self.toplayout.addWidget(self.form_notes)
 
-        self.status_label = QLabel("Ready.")
-        self.status_label.setWordWrap(True)
-        self.toplayout.addWidget(self.status_label)
-
     @staticmethod
     def _area_row(width_widget: QLineEdit, height_widget: QLineEdit, area_widget: QLineEdit) -> QWidget:
         """Create one row widget for width/height/area inputs."""
@@ -432,8 +440,6 @@ class GenerateForm(QWidget):
         if set_current:
             self.pageCombo.setCurrentIndex(idx)
             self.switchPage(idx)
-        else:
-            self._set_status(f"Added Target_{idx + 1}.")
 
     def _reset_targets(self, count: int) -> None:
         """Reset all target pages to exactly `count` pages."""
@@ -453,19 +459,16 @@ class GenerateForm(QWidget):
         self.pageCombo.setCurrentIndex(0)
         self.switchPage(0)
 
-    def _set_status(self, message: str) -> None:
-        """Show operation status in the footer area of the main window."""
-        self.status_label.setText(message)
-
     def show_message_window(self, message: str) -> None:
-        """Backward-compatible alias for in-window status updates."""
-        self._set_status(message)
+        """Display a transient popup with operation status text."""
+        self.exPopup = MessageWindow(message)
+        self.exPopup.setGeometry(500, 500, 450, 100)
+        self.exPopup.show()
 
     def switchPage(self, index: int) -> None:
         """Switch the active target page in the stacked widget."""
         self.Stack.setCurrentIndex(index)
         self.current_page = index
-        self._set_status(f"Switched to Target_{index + 1}.")
 
     def choose_directory(self) -> None:
         """Open a folder dialog and set the save directory field."""
@@ -473,7 +476,6 @@ class GenerateForm(QWidget):
         selected = QFileDialog.getExistingDirectory(self, "Select Save Directory", start_dir)
         if selected:
             self.save_path_input.setText(selected)
-            self._set_status(f"Save directory set to {selected}")
 
     @staticmethod
     def _set_line_edit_value(widget: QLineEdit, value: Any) -> None:
@@ -704,7 +706,7 @@ class GenerateForm(QWidget):
             return
 
         self._apply_info_dict(info_dict)
-        self.show_message_window(f"Parameters loaded from {file_path}")
+        self.show_message_window("Parameters loaded!")
 
     def get_info(self) -> Dict[str, Dict[str, Any]]:
         """Collect all non-empty form values into a nested dictionary."""
@@ -780,23 +782,18 @@ class GenerateForm(QWidget):
 
     def save(self) -> None:
         """Serialize the current form state to JSON and HTML files."""
-        print("Saving dictionary...")
-
-        output_dir = self.save_path_input.text().strip() or os.getcwd()
-
-        self.file_name = self._default_file_stem()
-        self.path = output_dir
-
-        self.info_dict = self.get_info()
-        save_result = save_parameters_json_and_html(self.info_dict, output_dir, self.file_name)
-
-        print(f"Done! Saved: {save_result.json_path}")
-        if save_result.html_path:
-            print(f"Done! Saved: {save_result.html_path}")
-            self.show_message_window(
-                f"Saved JSON and HTML to {output_dir}"
+        try:
+            result = save_parameters_json_and_html(
+                info_dict=self.get_info(),
+                output_dir=self.save_path_input.text().strip() or os.getcwd(),
+                file_stem=self._default_file_stem(),
             )
+        except OSError as exc:
+            self.show_message_window(f"Failed to save JSON: {exc}")
             return
 
-        print(f"HTML export failed: {save_result.html_error}")
-        self.show_message_window(f"JSON saved. HTML export failed: {save_result.html_error}")
+        if result.html_error:
+            self.show_message_window(f"JSON saved. HTML export failed: {result.html_error}")
+            return
+
+        self.show_message_window("Parameters saved to JSON and HTML!")

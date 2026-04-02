@@ -1,64 +1,50 @@
-# Distribution and Release Notes
+# Distribution and Local Installation
 
-## Local development install
+This repository supports two common workflows:
+
+1. Run the apps locally from a Git checkout.
+2. Build Windows `.exe` bundles for end users.
+
+## 1. Local install from Git checkout
 
 From the repository root:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
+python -m pip install -e ".[analysis,visualization,build,docs]"
 ```
 
-## Build the package locally
+Console entry points:
 
 ```bash
-python -m pip install --upgrade build twine
-python -m build
-python -m twine check dist/*
+pld-parameter-form
+pld-plume-manager
+pld-raw-visualizer
 ```
 
-## Automated GitHub release flow
+## 2. Windows executable builds
 
-The repository workflow is `.github/workflows/main.yml`.
-
-- every push and pull request to `main` runs a build check
-- pushes to `main` with `#major`, `#minor`, or `#patch` also create a version tag and publish to PyPI
-- tags use semantic versioning: `vX.Y.Z`
-
-Release markers:
-
-- `#major` -> `+1.0.0`
-- `#minor` -> `+0.1.0`
-- `#patch` -> `+0.0.1`
-
-If the same commit is retried, the workflow reuses an existing tag on `HEAD` instead of bumping again.
-
-## PyPI setup required once
-
-For automated publishing to work, configure a trusted publisher on PyPI for project `pldflow` and point it to this GitHub repository and workflow.
-
-## Windows executable build
-
-Use the helper script from the repository root:
+From PowerShell in the repository root:
 
 ```powershell
-python scripts/build_windows_exe.py
+./scripts/build_windows_exe.ps1 -App parameter
+./scripts/build_windows_exe.ps1 -App plume
+./scripts/build_windows_exe.ps1 -App visualizer
 ```
 
-Single-file build:
+For a single-file executable:
 
 ```powershell
-python scripts/build_windows_exe.py --onefile
+./scripts/build_windows_exe.ps1 -App parameter -OneFile
 ```
 
-Manual PyInstaller path:
+Output names:
 
-```powershell
-python -m pip install -e ".[build,visualization]"
-python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDParameterForm scripts/pyinstaller_entry_pld_form.py
-python -m PyInstaller --noconfirm --clean --windowed --collect-all PyQt5 --distpath dist --workpath build --specpath build/spec --paths src --name PLDRawVisualizer scripts/pyinstaller_entry_pld_visualizer.py
-```
+- `parameter` -> `dist/PLDParameterForm/` or `dist/PLDParameterForm.exe`
+- `plume` -> `dist/PLDPlumeManager/` or `dist/PLDPlumeManager.exe`
+- `visualizer` -> `dist/PLDRawVisualizer/` or `dist/PLDRawVisualizer.exe`
 
-Build outputs are written under `dist/`.
+## 3. Publishing suggestion
+
+For Windows users, publish the built artifacts from `dist/` as GitHub Release assets.
+Add code signing later if SmartScreen warnings become a problem.

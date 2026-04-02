@@ -1,36 +1,69 @@
-"""Raw XRD/AFM visualization helpers using XRD-utils and AFM-tools."""
+"""Raw XRD/AFM visualization helpers and drag/drop preview widgets."""
 
 from __future__ import annotations
 
-import os
-import sys
-import types
 import importlib
+import inspect
+import os
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import (
-    QApplication,
-    QFileDialog,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QSizePolicy,
-    QVBoxLayout,
-)
+from PyQt5.QtWidgets import QFileDialog, QGroupBox, QLabel, QSizePolicy, QVBoxLayout
+
+
+@dataclass(frozen=True)
+class RawFileTypeSpec:
+    """Configuration describing one supported raw-data input family."""
+
+    title: str
+    extensions: tuple[str, ...]
+    dialog_filter: str
+    placeholder_text: str
+    backend_family: str
+
+    @property
+    def extension_summary(self) -> str:
+        """Return a short human-readable extension list for status messages."""
+        return ", ".join(self.extensions)
 
 
 @dataclass
 class RawVisualizationResult:
-    """Result of one raw-data visualization call."""
+    """Result of a raw-data visualization call."""
 
     backend: str
     preview_pixmap: Optional[QPixmap]
     message: str
+
+
+RAW_FILE_SPECS: Dict[str, RawFileTypeSpec] = {
+    "xrd": RawFileTypeSpec(
+        title="XRD Scan",
+        extensions=(".xrdml", ".xml", ".ras", ".dat", ".txt", ".xy"),
+        dialog_filter=(
+            "XRD Scan Files (*.xrdml *.xml *.ras *.dat *.txt *.xy);;"
+            "All Files (*)"
+        ),
+        placeholder_text="Drag an XRD scan file here or click to load",
+        backend_family="xrd",
+    ),
+    "rsm": RawFileTypeSpec(
+        title="RSM",
+        extensions=(".xrdml", ".xml"),
+        dialog_filter="RSM Files (*.xrdml *.xml);;All Files (*)",
+        placeholder_text="Drag an RSM file here or click to load",
+        backend_family="rsm",
+    ),
+    "afm": RawFileTypeSpec(
+        title="AFM (.ibw)",
+        extensions=(".ibw",),
+        dialog_filter="Igor Binary Wave (*.ibw);;All Files (*)",
+        placeholder_text="Drag an AFM .ibw file here or click to load",
+        backend_family="afm",
+    ),
+}
 
 
 class ClickablePreviewLabel(QLabel):
@@ -47,23 +80,24 @@ class ClickablePreviewLabel(QLabel):
 
 
 class RawDataDropBlock(QGroupBox):
-    """Square drag/drop + click block for raw data files."""
+    """Square drag/drop block used by the standalone raw-data visualizer."""
 
     file_selected = pyqtSignal(str, str)
     status_message = pyqtSignal(str)
 
     def __init__(self, raw_type: str, title: str, start_dir_provider: Callable[[], str], parent=None):
-        super().__init__(title, parent)
+        spec = get_raw_file_spec(raw_type)
+        super().__init__(title or spec.title, parent)
         self.raw_type = raw_type
+        self.spec = spec
         self._start_dir_provider = start_dir_provider
         self._original_pixmap: Optional[QPixmap] = None
-        self._loaded_file_path: Optional[str] = None
 
         self.setAcceptDrops(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMinimumSize(280, 280)
 
-        self.preview_label = ClickablePreviewLabel(self._drag_hint())
+        self.preview_label = ClickablePreviewLabel(self.spec.placeholder_text)
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setWordWrap(True)
         self.preview_label.clicked.connect(self._open_file_dialog)
@@ -77,22 +111,9 @@ class RawDataDropBlock(QGroupBox):
         self.path_label.setWordWrap(True)
         self.path_label.setStyleSheet("color: #4d607a;")
 
-        self.copy_button = QPushButton("Copy Image")
-        self.copy_button.setEnabled(False)
-        self.copy_button.clicked.connect(self._copy_preview_to_clipboard)
-
-        self.export_button = QPushButton("Export PNG")
-        self.export_button.setEnabled(False)
-        self.export_button.clicked.connect(self._export_preview_image)
-
-        button_row = QHBoxLayout()
-        button_row.addWidget(self.copy_button)
-        button_row.addWidget(self.export_button)
-
         layout = QVBoxLayout()
         layout.addWidget(self.preview_label, 1)
         layout.addWidget(self.path_label)
-        layout.addLayout(button_row)
         self.setLayout(layout)
 
     def hasHeightForWidth(self) -> bool:  # noqa: N802 (Qt API name)
@@ -102,21 +123,21 @@ class RawDataDropBlock(QGroupBox):
         return width
 
     def dragEnterEvent(self, event):  # noqa: N802 (Qt API name)
-        if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
-                local_file = url.toLocalFile()
-                if local_file and self._is_supported_file(local_file):
-                    event.acceptProposedAction()
-                    return
+        if self._first_supported_url(event.mimeData().urls()) is not None:
+            event.acceptProposedAction()
+            return
         event.ignore()
 
     def dropEvent(self, event):  # noqa: N802 (Qt API name)
-        for url in event.mimeData().urls():
-            local_file = url.toLocalFile()
-            if local_file and self._is_supported_file(local_file):
-                self.file_selected.emit(self.raw_type, local_file)
-                event.acceptProposedAction()
-                return
+        supported_file = self._first_supported_url(event.mimeData().urls())
+        if supported_file is not None:
+            self.file_selected.emit(self.raw_type, supported_file)
+            event.acceptProposedAction()
+            return
+
+        self.status_message.emit(
+            f"{self.spec.title} supports: {self.spec.extension_summary}"
+        )
         event.ignore()
 
     def resizeEvent(self, event):  # noqa: N802 (Qt API name)
@@ -127,60 +148,51 @@ class RawDataDropBlock(QGroupBox):
         start_dir = self._start_dir_provider()
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            f"Load {self.title()} File",
+            f"Load {self.spec.title}",
             start_dir,
-            self._file_filter(),
+            self.spec.dialog_filter,
         )
-        if file_path:
-            self.file_selected.emit(self.raw_type, file_path)
-
-    def _is_supported_file(self, file_path: str) -> bool:
-        suffix = Path(file_path).suffix.lower()
-        if self.raw_type == "afm":
-            return suffix == ".ibw"
-        if self.raw_type == "xrd":
-            return suffix in (".xrdml", ".xml", ".ras", ".dat", ".txt", ".xy", ".ibw")
-        if self.raw_type == "rsm":
-            return suffix in (".xrdml", ".xml")
-        return False
-
-    def _drag_hint(self) -> str:
-        if self.raw_type == "afm":
-            return "Drag AFM .ibw here or click to load"
-        if self.raw_type == "rsm":
-            return "Drag RSM .xrdml/.xml here or click to load"
-        return "Drag XRD scan here or click to load"
-
-    def _file_filter(self) -> str:
-        if self.raw_type == "afm":
-            return "Igor Binary Wave (*.ibw);;All Files (*)"
-        if self.raw_type == "rsm":
-            return "RSM Files (*.xrdml *.xml);;All Files (*)"
-        return "XRD Files (*.xrdml *.xml *.ras *.dat *.txt *.xy *.ibw);;All Files (*)"
+        if not file_path:
+            return
+        if not self._is_supported_file(file_path):
+            self.status_message.emit(
+                f"{self.spec.title} supports: {self.spec.extension_summary}"
+            )
+            return
+        self.file_selected.emit(self.raw_type, file_path)
 
     def set_result(self, file_path: str, result: RawVisualizationResult) -> None:
-        """Update block after successful visualization."""
-        self._loaded_file_path = file_path
+        """Update the block after a successful visualization attempt."""
         self.path_label.setText(file_path)
         if result.preview_pixmap is not None and not result.preview_pixmap.isNull():
             self._original_pixmap = result.preview_pixmap
             self.preview_label.setText("")
             self._refresh_pixmap()
-            self._set_export_enabled(True)
-        else:
-            self._original_pixmap = None
-            self.preview_label.setPixmap(QPixmap())
-            self.preview_label.setText(result.message)
-            self._set_export_enabled(False)
+            return
+
+        self._original_pixmap = None
+        self.preview_label.setPixmap(QPixmap())
+        self.preview_label.setText(result.message)
 
     def set_error(self, file_path: str, message: str) -> None:
-        """Display failure message in the block."""
-        self._loaded_file_path = file_path
+        """Display a failure message in the block."""
         self.path_label.setText(file_path)
         self._original_pixmap = None
         self.preview_label.setPixmap(QPixmap())
         self.preview_label.setText(message)
-        self._set_export_enabled(False)
+
+    def _first_supported_url(self, urls) -> Optional[str]:
+        """Return the first dropped local file that matches this block type."""
+        for url in urls:
+            local_file = url.toLocalFile()
+            if local_file and self._is_supported_file(local_file):
+                return local_file
+        return None
+
+    def _is_supported_file(self, file_path: str) -> bool:
+        """Return True when the file suffix matches the configured raw type."""
+        _, extension = os.path.splitext(file_path)
+        return extension.lower() in self.spec.extensions
 
     def _refresh_pixmap(self) -> None:
         if self._original_pixmap is None or self._original_pixmap.isNull():
@@ -192,90 +204,178 @@ class RawDataDropBlock(QGroupBox):
         )
         self.preview_label.setPixmap(scaled)
 
-    def _set_export_enabled(self, enabled: bool) -> None:
-        self.copy_button.setEnabled(enabled)
-        self.export_button.setEnabled(enabled)
 
-    def _copy_preview_to_clipboard(self) -> None:
-        if self._original_pixmap is None or self._original_pixmap.isNull():
-            self.status_message.emit(f"{self.title()}: no image is available to copy.")
-            return
-        QApplication.clipboard().setPixmap(self._original_pixmap)
-        self.status_message.emit(f"{self.title()}: image copied to clipboard.")
-
-    def _export_preview_image(self) -> None:
-        if self._original_pixmap is None or self._original_pixmap.isNull():
-            self.status_message.emit(f"{self.title()}: no image is available to export.")
-            return
-
-        if self._loaded_file_path:
-            loaded_path = Path(self._loaded_file_path)
-            default_path = loaded_path.with_name(f"{loaded_path.stem}_{self.raw_type}.png")
-        else:
-            default_path = Path(self._start_dir_provider()) / f"{self.raw_type}_preview.png"
-
-        output_path, _ = QFileDialog.getSaveFileName(
-            self,
-            f"Export {self.title()} Preview",
-            str(default_path),
-            "PNG Image (*.png);;JPEG Image (*.jpg *.jpeg);;BMP Image (*.bmp)",
-        )
-        if not output_path:
-            return
-        if self._original_pixmap.save(output_path):
-            self.status_message.emit(f"{self.title()}: exported image to {output_path}")
-        else:
-            self.status_message.emit(f"{self.title()}: failed to export image.")
+def get_raw_file_spec(raw_type: str) -> RawFileTypeSpec:
+    """Return the file-handling spec for the requested raw-data family."""
+    try:
+        return RAW_FILE_SPECS[raw_type]
+    except KeyError as exc:
+        supported = ", ".join(sorted(RAW_FILE_SPECS))
+        raise ValueError(f"Unknown raw_type '{raw_type}'. Use one of: {supported}.") from exc
 
 
 def visualize_raw_file(raw_type: str, file_path: str) -> RawVisualizationResult:
-    """Visualize one raw file through AFM-tools/XRD-utils and return preview info."""
+    """Run the configured raw-data backend and attempt to build an embedded preview."""
+    called_backend, result = _run_learn_visualizer(raw_type, file_path)
+    preview = _result_to_pixmap(result)
+    if preview is not None:
+        message = "Embedded preview updated."
+    else:
+        message = "Visualizer launched (no embeddable image returned)."
+    return RawVisualizationResult(backend=called_backend, preview_pixmap=preview, message=message)
+
+
+def _call_with_file_path(func: Callable[..., Any], file_path: str) -> Any:
+    """Call a visualizer function using common file-path argument conventions."""
     try:
-        if raw_type == "afm":
-            backend, raw_result, detail = _visualize_afm_with_tools(file_path)
-        elif raw_type == "xrd":
-            backend, raw_result, detail = _visualize_xrd_with_utils(file_path)
-        elif raw_type == "rsm":
-            backend, raw_result, detail = _visualize_rsm_with_utils(file_path)
-        else:
-            raise ValueError(f"Unknown raw_type '{raw_type}'. Use 'xrd', 'rsm', or 'afm'.")
-    except Exception as exc:
-        hint = _dependency_troubleshooting_hint(exc)
-        if hint:
-            raise RuntimeError(f"{exc}\n\n{hint}") from exc
+        return func(file_path)
+    except TypeError:
+        signature = inspect.signature(func)
+        for param_name in ("file_path", "path", "filename", "file", "ibw_file"):
+            if param_name in signature.parameters:
+                return func(**{param_name: file_path})
         raise
 
-    preview = _result_to_pixmap(raw_result)
-    if preview is not None:
-        message = f"{detail} | Embedded preview updated."
-    else:
-        message = f"{detail} | Visualizer ran, but no embeddable image was returned."
 
-    _close_figure_if_needed(raw_result)
-    return RawVisualizationResult(backend=backend, preview_pixmap=preview, message=message)
+def _run_learn_visualizer(raw_type: str, file_path: str) -> tuple[str, Any]:
+    """Execute visualization from XRD/AFM helper packages when available."""
+    spec = get_raw_file_spec(raw_type)
+    known_backend_result = _run_known_backend(raw_type, file_path)
+    if known_backend_result is not None:
+        return known_backend_result
+
+    module_candidates: Dict[str, list[str]] = {
+        "xrd": ["xrd_learn", "xrdlearn", "XRD_Learn", "xrd_utils", "xrdutils"],
+        "rsm": ["xrd_learn", "xrdlearn", "XRD_Learn", "xrd_utils", "xrdutils"],
+        "afm": ["afm_learn", "afmlearn", "AFM_Learn", "afm_tools", "afmtools"],
+    }
+    function_candidates: Dict[str, list[str]] = {
+        "xrd": [
+            "visualize_xrd",
+            "plot_xrd",
+            "visualize_scan",
+            "plot_scan",
+            "visualize_ibw",
+            "visualize",
+            "plot",
+            "main",
+        ],
+        "rsm": [
+            "visualize_rsm",
+            "plot_rsm",
+            "visualize_xrd",
+            "plot_xrd",
+            "visualize",
+            "plot",
+            "main",
+        ],
+        "afm": [
+            "visualize_afm",
+            "plot_afm",
+            "visualize_ibw",
+            "plot_ibw",
+            "visualize",
+            "plot",
+            "main",
+        ],
+    }
+
+    loaded_module = None
+    for module_name in module_candidates[raw_type]:
+        try:
+            loaded_module = importlib.import_module(module_name)
+            break
+        except ModuleNotFoundError:
+            continue
+
+    if loaded_module is None:
+        package_hint = {
+            "xrd": "an XRD visualization backend such as XRD-Learn/XRD-utils",
+            "rsm": "an RSM/XRD visualization backend such as XRD-Learn/XRD-utils",
+            "afm": "an AFM visualization backend such as AFM-Learn/AFM-tools",
+        }[spec.backend_family]
+        raise RuntimeError(
+            f"No backend is installed for {spec.title}. Install {package_hint}, then retry."
+        )
+
+    for function_name in function_candidates[raw_type]:
+        candidate = getattr(loaded_module, function_name, None)
+        if callable(candidate):
+            result = _call_with_file_path(candidate, file_path)
+            return f"{loaded_module.__name__}.{function_name}", result
+
+    expected_names = ", ".join(function_candidates[raw_type])
+    raise RuntimeError(
+        f"No compatible visualize function was found in module '{loaded_module.__name__}'. "
+        f"Expected one of: {expected_names}"
+    )
 
 
-def _visualize_afm_with_tools(file_path: str) -> tuple[str, Any, str]:
-    """Load/analyze/visualize AFM .ibw using AFM-tools functions."""
-    from matplotlib import pyplot as plt
+def _run_known_backend(raw_type: str, file_path: str) -> tuple[str, Any] | None:
+    """Use direct adapters for the published AFM-tools and XRD-utils packages."""
+    if raw_type == "xrd":
+        return _run_xrd_utils_scan(file_path)
+    if raw_type == "rsm":
+        return _run_xrd_utils_rsm(file_path)
+    if raw_type == "afm":
+        return _run_afm_tools_ibw(file_path)
+    return None
 
-    package_name, afm_RMS_roughness, convert_scan_setting, parse_ibw, AFMVisualizer = _import_afm_tools_symbols()
 
-    imgs, sample_name, labels, scan_size = parse_ibw(file_path)
-    if imgs.ndim != 3 or imgs.shape[2] == 0:
-        raise RuntimeError("AFM-tools returned invalid image stack from this .ibw file.")
+def _run_xrd_utils_scan(file_path: str) -> tuple[str, Any] | None:
+    """Render a standard XRD scan using `XRD-utils` when it is installed."""
+    try:
+        from matplotlib import pyplot as plt
+        from xrd_utils.xrd_viz import plot_xrd
+    except Exception:  # noqa: BLE001
+        return None
 
-    channel_index = _pick_afm_channel(labels)
-    channel_name = labels[channel_index]
-    image = imgs[:, :, channel_index]
-    scan_setting = convert_scan_setting(scan_size)
-    rms = float(afm_RMS_roughness(image))
+    figure, axis = plt.subplots(figsize=(6, 4))
+    plot_xrd([file_path], [os.path.basename(file_path)], fig=figure, ax=axis, diff=None, yscale="log")
+    figure.tight_layout()
+    return "xrd_utils.xrd_viz.plot_xrd", figure
 
-    fig, ax = plt.subplots(figsize=(5.0, 4.0))
-    viz = AFMVisualizer(
+
+def _run_xrd_utils_rsm(file_path: str) -> tuple[str, Any] | None:
+    """Render an RSM map using `XRD-utils` when it is installed."""
+    try:
+        from matplotlib import pyplot as plt
+        from xrd_utils.rsm_viz import RSMPlotter
+    except Exception:  # noqa: BLE001
+        return None
+
+    figure, axis = plt.subplots(figsize=(6, 5))
+    plotter = RSMPlotter()
+    plotter.plot(file_path, ax=axis)
+    figure.tight_layout()
+    return "xrd_utils.rsm_viz.RSMPlotter.plot", figure
+
+
+def _run_afm_tools_ibw(file_path: str) -> tuple[str, Any] | None:
+    """Render an AFM image using `AFM-tools` when it is installed."""
+    try:
+        import numpy as np
+        from afm_tools.afm_utils import parse_ibw
+        from afm_tools.afm_viz import AFMVisualizer
+    except Exception:  # noqa: BLE001
+        return None
+
+    images, sample_name, labels, scan_size = parse_ibw(file_path)
+    if images.ndim != 3 or images.shape[2] == 0:
+        raise RuntimeError("AFM-tools parsed the file, but no image channels were returned.")
+
+    channel_index = 0
+    preferred_labels = ("Height", "ZSensor", "Amplitude", "Phase")
+    for preferred_label in preferred_labels:
+        if preferred_label in labels:
+            channel_index = labels.index(preferred_label)
+            break
+
+    image = np.asarray(images[:, :, channel_index])
+    visualizer = AFMVisualizer(
         colorbar_setting={
             "colorbar_type": "percent",
-            "colorbar_range": (2, 98),
+            "colorbar_range": (0.2, 99.8),
             "outliers_std": 5,
             "symmetric_clim": False,
             "visible": True,
@@ -284,263 +384,13 @@ def _visualize_afm_with_tools(file_path: str) -> tuple[str, Any, str]:
         scalebar=True,
         debug=False,
     )
-    viz.viz(
+    figure, _axis = visualizer.viz(
         img=image,
-        scan_size=scan_setting,
-        fig=fig,
-        ax=ax,
-        title=f"{sample_name} | {channel_name}",
-        cbar_unit="nm",
+        scan_size=scan_size,
+        title=f"{sample_name} - {labels[channel_index]}",
     )
-    fig.tight_layout()
-
-    backend = f"{package_name}.afm_utils.parse_ibw + {package_name}.afm_viz.AFMVisualizer.viz"
-    detail = (
-        f"AFM loaded: sample={sample_name}, channel={channel_name}, "
-        f"RMS={rms:.4g} m"
-    )
-    return backend, fig, detail
-
-
-def _import_afm_tools_symbols() -> tuple[str, Callable[..., float], Callable[..., dict], Callable[..., Any], type]:
-    """Import the AFM-tools APIs used by the visualizer.
-
-    AFM-tools may import `mayavi` from package `__init__`, even though
-    the 2D visualization path used here does not need it. This loader first
-    tries normal imports and, if that fails due to missing `mayavi`, it bypasses
-    package `__init__` and imports only required submodules.
-    """
-    candidate_packages = ("afm_tools", "afm_learn")
-    last_error: Optional[Exception] = None
-
-    for package_name in candidate_packages:
-        try:
-            afm_img = importlib.import_module(f"{package_name}.afm_image_analyzer")
-            afm_utils = importlib.import_module(f"{package_name}.afm_utils")
-            afm_viz = importlib.import_module(f"{package_name}.afm_viz")
-            return (
-                package_name,
-                afm_img.afm_RMS_roughness,
-                afm_utils.convert_scan_setting,
-                afm_utils.parse_ibw,
-                afm_viz.AFMVisualizer,
-            )
-        except ModuleNotFoundError as exc:
-            # Optional 3D dependency; use targeted import path that bypasses package __init__.
-            if exc.name == "mayavi":
-                return _import_afm_tools_without_mayavi(package_name)
-            # If this candidate package itself is missing, keep trying.
-            if exc.name == package_name or (exc.name and exc.name.startswith(f"{package_name}.")):
-                last_error = exc
-                continue
-            raise
-
-    if last_error is not None:
-        raise last_error
-    raise ModuleNotFoundError(
-        "AFM-tools package is not installed. Expected one of: afm_tools, afm_learn."
-    )
-
-
-def _import_afm_tools_without_mayavi(
-    package_name: str,
-) -> tuple[str, Callable[..., float], Callable[..., dict], Callable[..., Any], type]:
-    """Load AFM-tools submodules without executing package `__init__`."""
-    afm_pkg_dir = _find_package_dir(package_name)
-    if afm_pkg_dir is None:
-        raise ModuleNotFoundError(
-            "AFM-tools package is not installed. Expected one of: afm_tools, afm_learn."
-        )
-
-    # Remove partially imported package state left by a failed package import.
-    for name in list(sys.modules):
-        if name == package_name or name.startswith(f"{package_name}."):
-            sys.modules.pop(name, None)
-
-    pkg = types.ModuleType(package_name)
-    pkg.__file__ = str(afm_pkg_dir / "__init__.py")
-    pkg.__path__ = [str(afm_pkg_dir)]
-    sys.modules[package_name] = pkg
-
-    afm_utils = importlib.import_module(f"{package_name}.afm_utils")
-    afm_viz = importlib.import_module(f"{package_name}.afm_viz")
-    afm_img = importlib.import_module(f"{package_name}.afm_image_analyzer")
-
-    return (
-        package_name,
-        afm_img.afm_RMS_roughness,
-        afm_utils.convert_scan_setting,
-        afm_utils.parse_ibw,
-        afm_viz.AFMVisualizer,
-    )
-
-
-def _find_package_dir(package_name: str) -> Optional[Path]:
-    """Locate an installed package directory from current interpreter `sys.path`."""
-    for entry in sys.path:
-        if not entry:
-            continue
-        candidate = Path(entry) / package_name
-        if (candidate / "__init__.py").exists():
-            return candidate
-    return None
-
-
-def _visualize_xrd_with_utils(file_path: str) -> tuple[str, Any, str]:
-    """Load/analyze/visualize XRD scan using XRD-utils functions."""
-    from matplotlib import pyplot as plt
-    import numpy as np
-
-    package_name, xrd_utils, xrd_viz, _ = _import_xrd_tools_modules()
-    calculate_fwhm = xrd_utils.calculate_fwhm
-    detect_peaks = xrd_utils.detect_peaks
-    load_xrd_scan = xrd_utils.load_xrd_scan
-    plot_xrd = xrd_viz.plot_xrd
-
-    x, y = load_xrd_scan(file_path)
-    x = np.asarray(x)
-    y = np.asarray(y)
-    if x.size == 0 or y.size == 0:
-        raise RuntimeError("XRD-utils returned empty scan arrays.")
-
-    prominence = max(float(np.ptp(y)) * 0.10, 1e-9)
-    peaks_x, peaks_y = detect_peaks(x, y, num_peaks=1, prominence=prominence)
-    peak_note = "peak not detected"
-    if peaks_x:
-        fwhm, *_ = calculate_fwhm(x, y, px=float(peaks_x[0]), fit_type="gaussian", viz=False)
-        if fwhm is not None:
-            peak_note = f"peak={float(peaks_x[0]):.4f}, FWHM={float(fwhm):.4f}"
-        else:
-            peak_note = f"peak={float(peaks_x[0]):.4f}, FWHM=unavailable"
-
-    fig, ax = plt.subplots(figsize=(5.2, 4.0))
-    plot_xrd(
-        inputs=file_path,
-        labels=[Path(file_path).stem],
-        title="XRD Scan",
-        yscale="log",
-        diff=None,
-        fig=fig,
-        ax=ax,
-        legend_style="legend",
-        grid=True,
-    )
-    if peaks_x:
-        ax.axvline(float(peaks_x[0]), color="tab:red", linestyle="--", linewidth=1)
-        ax.scatter([float(peaks_x[0])], [float(peaks_y[0])], color="tab:red", s=12, zorder=5)
-    fig.tight_layout()
-
-    backend = (
-        f"{package_name}.xrd_utils.load_xrd_scan/detect_peaks/calculate_fwhm + "
-        f"{package_name}.xrd_viz.plot_xrd"
-    )
-    detail = f"XRD loaded: {Path(file_path).name}, {peak_note}"
-    return backend, fig, detail
-
-
-def _visualize_rsm_with_utils(file_path: str) -> tuple[str, Any, str]:
-    """Load and visualize reciprocal space map using XRD-utils."""
-    from matplotlib import pyplot as plt
-    import numpy as np
-
-    package_name, _, _, rsm_viz = _import_xrd_tools_modules()
-    RSMPlotter = rsm_viz.RSMPlotter
-
-    fig, ax = plt.subplots(figsize=(5.2, 4.0))
-    plotter = RSMPlotter(
-        plot_params={
-            "reciprocal_space": True,
-            "title": f"RSM: {Path(file_path).stem}",
-            "log_scale": True,
-        }
-    )
-    qx, qz, intensity = plotter.plot(file_path, ax=ax, ignore_yaxis=False)
-    _ = qx, qz
-    fig.tight_layout()
-
-    intensity_arr = np.asarray(intensity)
-    detail = f"RSM loaded: {Path(file_path).name}, grid={intensity_arr.shape}"
-    backend = f"{package_name}.rsm_viz.RSMPlotter.plot"
-    return backend, fig, detail
-
-
-def _import_xrd_tools_modules() -> tuple[str, Any, Any, Any]:
-    """Import XRD-utils modules from new or legacy package names."""
-    candidate_packages = ("xrd_tools", "xrd_learn")
-    last_error: Optional[Exception] = None
-
-    for package_name in candidate_packages:
-        try:
-            xrd_utils = importlib.import_module(f"{package_name}.xrd_utils")
-            xrd_viz = importlib.import_module(f"{package_name}.xrd_viz")
-            rsm_viz = importlib.import_module(f"{package_name}.rsm_viz")
-            return package_name, xrd_utils, xrd_viz, rsm_viz
-        except ModuleNotFoundError as exc:
-            if exc.name == package_name or (exc.name and exc.name.startswith(f"{package_name}.")):
-                last_error = exc
-                continue
-            raise
-
-    if last_error is not None:
-        raise last_error
-    raise ModuleNotFoundError(
-        "XRD-utils package is not installed. Expected one of: xrd_tools, xrd_learn."
-    )
-
-
-def _dependency_troubleshooting_hint(exc: Exception) -> str:
-    """Return focused remediation hints for common binary dependency failures."""
-    text = str(exc)
-    lower = text.lower()
-
-    if "glibcxx_" in lower and "not found" in lower:
-        return (
-            "Dependency runtime mismatch detected (missing GLIBCXX symbol).\n"
-            "Try:\n"
-            "1) conda activate pld\n"
-            "2) conda install -n pld -c conda-forge libstdcxx-ng libgcc-ng\n"
-            "3) python -m pip install --force-reinstall --no-cache-dir AFM-tools XRD-utils xrayutilities\n"
-            "Also ensure VS Code uses the same `pld` interpreter."
-        )
-
-    if "numpy.dtype size changed" in lower or "binary incompatibility" in lower:
-        return (
-            "Binary package ABI mismatch detected (NumPy/C-extension versions differ).\n"
-            "Try reinstalling numeric dependencies in one environment:\n"
-            "1) conda activate pld\n"
-            "2) python -m pip install --upgrade --force-reinstall --no-cache-dir "
-            "numpy scipy matplotlib AFM-tools XRD-utils xrayutilities"
-        )
-
-    if "no module named 'mayavi'" in lower:
-        return (
-            "AFM-tools tried to import optional 3D dependency `mayavi`.\n"
-            "This app can run AFM 2D visualization without it, but your environment still raised that import path.\n"
-            "Try reinstalling AFM-tools and relaunching with the `pld` interpreter."
-        )
-
-    return ""
-
-
-def _pick_afm_channel(labels: list[str]) -> int:
-    """Select a preferred AFM channel index from label list."""
-    preferred = ("Height", "ZSensor", "Amplitude", "Phase")
-    for target in preferred:
-        for idx, label in enumerate(labels):
-            if target.lower() in str(label).lower():
-                return idx
-    return 0
-
-
-def _close_figure_if_needed(result: Any) -> None:
-    """Close matplotlib figure objects after preview extraction."""
-    try:
-        from matplotlib.figure import Figure
-        from matplotlib import pyplot as plt
-    except Exception:  # noqa: BLE001
-        return
-    if isinstance(result, Figure):
-        plt.close(result)
+    figure.tight_layout()
+    return "afm_tools.afm_viz.AFMVisualizer.viz", figure
 
 
 def _result_to_pixmap(result: Any) -> Optional[QPixmap]:
@@ -586,7 +436,7 @@ def _result_to_pixmap(result: Any) -> Optional[QPixmap]:
 
 
 def _figure_to_pixmap(obj: Any) -> Optional[QPixmap]:
-    """Convert matplotlib figure object to pixmap."""
+    """Convert a matplotlib figure object into a pixmap."""
     try:
         from io import BytesIO
         from matplotlib.figure import Figure
@@ -607,7 +457,7 @@ def _figure_to_pixmap(obj: Any) -> Optional[QPixmap]:
 
 
 def _array_to_pixmap(obj: Any) -> Optional[QPixmap]:
-    """Convert numpy array to pixmap (grayscale or RGB)."""
+    """Convert a numpy array into a pixmap when the shape is image-like."""
     try:
         import numpy as np
     except Exception:  # noqa: BLE001
@@ -621,24 +471,24 @@ def _array_to_pixmap(obj: Any) -> Optional[QPixmap]:
     arr = np.asarray(obj)
     if arr.ndim == 2:
         normalized = _normalize_to_uint8(arr)
-        h, w = normalized.shape
-        image = QImage(normalized.data, w, h, normalized.strides[0], QImage.Format_Grayscale8)
+        height, width = normalized.shape
+        image = QImage(normalized.data, width, height, normalized.strides[0], QImage.Format_Grayscale8)
         return QPixmap.fromImage(image.copy())
 
     if arr.ndim == 3 and arr.shape[2] in (3, 4):
         normalized = _normalize_to_uint8(arr)
-        h, w, c = normalized.shape
-        if c == 3:
-            image = QImage(normalized.data, w, h, normalized.strides[0], QImage.Format_RGB888)
+        height, width, channels = normalized.shape
+        if channels == 3:
+            image = QImage(normalized.data, width, height, normalized.strides[0], QImage.Format_RGB888)
         else:
-            image = QImage(normalized.data, w, h, normalized.strides[0], QImage.Format_RGBA8888)
+            image = QImage(normalized.data, width, height, normalized.strides[0], QImage.Format_RGBA8888)
         return QPixmap.fromImage(image.copy())
 
     return None
 
 
 def _normalize_to_uint8(arr):
-    """Normalize array values into uint8 [0, 255]."""
+    """Normalize numeric array values into unsigned 8-bit image data."""
     import numpy as np
 
     arr_float = arr.astype(float)

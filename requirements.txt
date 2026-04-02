@@ -1,2 +1,6 @@
-# Core runtime dependencies for pldflow.
+# Runtime dependencies for the desktop apps.
 PyQt5>=5.15.6,<6
+matplotlib>=3.5
+AFM-tools
+XRD-utils
+xrayutilities

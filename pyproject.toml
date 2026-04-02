@@ -1,29 +1,20 @@
 [build-system]
-requires = ["setuptools>=69", "wheel", "setuptools_scm[toml]>=8"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pldflow"
-dynamic = ["version"]
-description = "Desktop workflow tools for PLD parameter capture and raw-data visualization"
+name = "pld-workflow"
+version = "0.1.0"
+description = "PLD recorder, plume manager, visualizer, and optional analysis helpers"
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [
-  { name = "Yichen Guo" },
-]
-classifiers = [
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Operating System :: OS Independent",
-]
 dependencies = [
   "PyQt5>=5.15.6,<6",
 ]
 
 [project.scripts]
 pld-parameter-form = "pld_workflow.app:main"
+pld-plume-manager = "pld_workflow.plume_app:main"
 pld-raw-visualizer = "pld_workflow.visualizer_app:main"
 
 [project.optional-dependencies]
@@ -36,26 +27,20 @@ analysis = [
   "scikit-image",
   "seaborn",
 ]
+visualization = [
+  "AFM-tools",
+  "matplotlib>=3.5",
+  "XRD-utils",
+  "xrayutilities",
+]
 build = [
-  "build>=1.2",
   "pyinstaller>=6.0",
-  "twine>=5.0",
 ]
 docs = [
   "sphinx>=7.0",
   "pydata-sphinx-theme",
 ]
-visualization = [
-  "AFM-tools",
-  "XRD-utils",
-  "xrayutilities",
-]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["pld_workflow*"]
-
-[tool.setuptools_scm]
-version_scheme = "no-guess-dev"
-local_scheme = "no-local-version"
-fallback_version = "0.0.0"

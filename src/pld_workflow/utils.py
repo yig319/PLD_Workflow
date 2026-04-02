@@ -1,91 +1,54 @@
-import h5py 
-import numpy as np
+"""Small plotting and HDF5 helpers used by legacy plume notebooks."""
+
+from __future__ import annotations
+
+import h5py
 import matplotlib.pyplot as plt
+import numpy as np
 
-def show_images(images, labels=None, img_per_row=8, colorbar=False):
 
-    '''
-    This is a utility function used to show a series images.
+def show_images(images, labels=None, img_per_row: int = 8, colorbar: bool = False) -> None:
+    """Display a list of 2-D images in a compact grid."""
+    if len(images) == 0:
+        raise ValueError("At least one image is required.")
 
-    :param images: input images
-    :type images: np.array
+    labels = list(labels) if labels is not None else list(range(len(images)))
+    row_count = (len(images) + img_per_row - 1) // img_per_row
+    aspect = images[0].shape[1] / max(images[0].shape[0], 1)
+    fig, axes = plt.subplots(row_count, img_per_row, figsize=(16, max(2, row_count * (aspect + 1))))
+    axes = np.atleast_2d(axes)
 
-    :param labels: labels for images
-    :type labels: str(, optional)
+    for index in range(row_count * img_per_row):
+        axis = axes[index // img_per_row, index % img_per_row]
+        if index >= len(images):
+            axis.axis("off")
+            continue
 
-    :param img_per_row: how many images to show in one row
-    :type img_per_row: int(, optional)
+        axis.set_title(str(labels[index]))
+        image_handle = axis.imshow(images[index])
+        axis.axis("off")
+        if colorbar:
+            fig.colorbar(image_handle, ax=axis)
 
-    :param colorbar: to determine if colobar is included 
-    :type colorbar: bool(, optional)
-    '''
-
-    h = images[0].shape[1] // images[0].shape[0]*0.5 + 1
-    if not labels:
-        labels = range(len(images))
-    fig, axes = plt.subplots(len(images)//img_per_row+1*int(len(images)%img_per_row>0), img_per_row, 
-                             figsize=(16, h*len(images)//img_per_row+1))
-    for i in range(len(images)):
-        if len(images) <= img_per_row:
-            axes[i%img_per_row].title.set_text(labels[i])
-            im = axes[i%img_per_row].imshow(images[i])
-            if colorbar:
-                fig.colorbar(im, ax=axes[i%img_per_row])
-            axes[i//img_per_row, i%img_per_row].axis('off')
-
-        else:
-            axes[i//img_per_row, i%img_per_row].title.set_text(labels[i])
-            im = axes[i//img_per_row, i%img_per_row].imshow(images[i])
-            if colorbar:
-                fig.colorbar(im, ax=axes[i//img_per_row, i%img_per_row])
-            axes[i//img_per_row, i%img_per_row].axis('off')
-            
+    plt.tight_layout()
     plt.show()
 
-def show_h5_dataset_name(ds_path, class_name=None):
-    '''
-    This is a utility function used to show the dataset names in a hdf5 file.
 
-    :param ds_path: path to hdf5 file
-    :type ds_path: str
-
-    :param class_name: class name of hdf5 file
-    :type class_name: str(, optional)
-    '''
-
-    with h5py.File(ds_path) as hf:
+def show_h5_dataset_name(ds_path, class_name=None) -> None:
+    """Print the dataset names available in an HDF5 archive."""
+    with h5py.File(ds_path) as handle:
         if class_name:
-            print(hf[class_name].keys())            
+            print(list(handle[class_name].keys()))
         else:
-            print(hf.keys())
-            
-def load_h5_examples(ds_path, class_name, ds_name, process_func=None, show=True):
+            print(list(handle.keys()))
 
-    '''
-    This is a utility function used to load plume images from hdf5 file 
-    based on the the ds_name after preprocess with process_func.
 
-    :param ds_path: path to hdf5 file
-    :type ds_path: str
+def load_h5_examples(ds_path, class_name, ds_name, process_func=None, show: bool = True):
+    """Load a plume dataset from HDF5 and optionally display example frames."""
+    with h5py.File(ds_path) as handle:
+        plumes = np.array(handle[class_name][ds_name])
 
-    :param class_name: class name of hdf5 file
-    :type class_name: str(, optional)
-
-    :param ds_name: dataset name for plume images in hdf5 file
-    :type ds_name: str
-
-    :param process_func: preprocess function
-    :type process_func: function(, optional)
-
-    :param show: show the plumes images if show=True
-    :type show: bool(, optional)
-
-    '''
-
-    with h5py.File(ds_path) as hf:
-        plumes = np.array(hf[class_name][ds_name])
     if show:
-        if process_func:
-            images = process_func(plumes)
+        images = process_func(plumes) if process_func else plumes
         show_images(images, colorbar=True)
     return plumes

@@ -5,6 +5,6 @@ Prefer:
     from pld_workflow.form import GenerateForm
 """
 
-from .form import GenerateForm
+from .form import GenerateForm, MessageWindow
 
-__all__ = ["GenerateForm"]
+__all__ = ["GenerateForm", "MessageWindow"]

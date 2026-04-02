@@ -1,0 +1,30 @@
+{
+  "header": {
+    "Growth ID": "PLD-2026-001",
+    "User Name": "Yichen",
+    "Date": "04/02/2026",
+    "time": "10:15:00",
+    "Path": "C:/data/pld",
+    "Chamber": "PLD-1",
+    "Substrate": "SrTiO3 (Strontium Titanate)",
+    "Substrate Size": "5 cm * 5 cm",
+    "Cool Down Atmosphere": "Oxygen",
+    "Notes": "Sample metadata for notebook testing."
+  },
+  "target_1": {
+    "Target Material": "SRO",
+    "Offset X (mm)": 1.2,
+    "Offset Y (mm)": 0.0,
+    "Scan Diameter (mm)": 18.0,
+    "Scan Speed X/Z (mm/s)": 2.5,
+    "Laser Voltage (kV)": 21.0,
+    "Laser Energy (mJ)": 245.0,
+    "Targeted Measured Energy (mJ)": 238.0,
+    "Fluence (J/cm^2)": 1.8,
+    "Ablation Temperature (degC)": 680.0,
+    "Ablation Pressure (mTorr)": 120.0,
+    "Ablation Atmosphere Gas": "Oxygen",
+    "Ablation Frequency (Hz)": 5.0,
+    "Ablation Pulses (count)": 2400.0
+  }
+}
