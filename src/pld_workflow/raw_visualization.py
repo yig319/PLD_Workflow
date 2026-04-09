@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from .afm_visualization import AfmPreviewOptions, load_afm_dataset, preferred_channel_index, render_afm_preview
+from .afm_pfm_plotting import AfmPreviewOptions, load_afm_dataset, preferred_channel_index, render_afm_preview
 from .xrd_rsm_visualization import render_rsm_preview, render_xrd_preview
 
 
@@ -385,7 +385,7 @@ class AfmDataDropBlock(RawDataDropBlock):
         self.set_result(
             self._current_file_path,
             RawVisualizationResult(
-                backend="pld_workflow.afm_visualization.render_afm_preview",
+                backend="pld_workflow.afm_pfm_plotting.render_afm_preview",
                 preview_pixmap=preview_pixmap,
                 message=rendered.message,
             ),
@@ -515,7 +515,7 @@ def _run_known_backend(raw_type: str, file_path: str) -> tuple[str, Any] | None:
                 show_metric_overlay=False,
             ),
         )
-        return "pld_workflow.afm_visualization.render_afm_preview", preview.figure
+        return "pld_workflow.afm_pfm_plotting.render_afm_preview", preview.figure
     return None
 
 
