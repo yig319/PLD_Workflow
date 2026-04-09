@@ -13,9 +13,13 @@ dependencies = [
 ]
 
 [project.scripts]
-pld-parameter-form = "pld_workflow.app:main"
-pld-plume-manager = "pld_workflow.plume_app:main"
-pld-raw-visualizer = "pld_workflow.visualizer_app:main"
+pld-parameter-form = "pld_workflow.parameter_form_app:main"
+pld-plume-manager = "pld_workflow.plume_manager_app:main"
+pld-xrd-visualizer = "pld_workflow.xrd_visualizer_app:main"
+pld-afm-pfm-visualizer = "pld_workflow.afm_pfm_visualizer_app:main"
+pld-rheed-imm-visualizer = "pld_workflow.rheed_imm_visualizer_app:main"
+pld-raw-visualizer = "pld_workflow.xrd_visualizer_app:main"
+pld-afm-visualizer = "pld_workflow.afm_pfm_visualizer_app:main"
 
 [project.optional-dependencies]
 analysis = [

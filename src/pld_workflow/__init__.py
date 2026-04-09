@@ -1,6 +1,16 @@
 """PLD workflow desktop apps plus optional plume and analysis helpers."""
 
+from .afm_pfm_visualizer_app import AfmVisualizerWindow
 from .form import GenerateForm, MessageWindow
-from .plume_app import PlumeManagerWindow
+from .plume_manager_app import PlumeManagerWindow
+from .rheed_imm_visualizer_app import RheedImmVisualizerWindow
+from .xrd_visualizer_app import XrdVisualizerWindow
 
-__all__ = ["GenerateForm", "MessageWindow", "PlumeManagerWindow"]
+__all__ = [
+    "AfmVisualizerWindow",
+    "GenerateForm",
+    "MessageWindow",
+    "PlumeManagerWindow",
+    "RheedImmVisualizerWindow",
+    "XrdVisualizerWindow",
+]

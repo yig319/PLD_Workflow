@@ -9,8 +9,21 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtWidgets import QFileDialog, QGroupBox, QLabel, QSizePolicy, QVBoxLayout
+from PyQt5.QtGui import QGuiApplication, QImage, QPixmap
+from PyQt5.QtWidgets import (
+    QCheckBox,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .afm_visualization import AfmPreviewOptions, load_afm_dataset, preferred_channel_index, render_afm_preview
+from .xrd_rsm_visualization import render_rsm_preview, render_xrd_preview
 
 
 @dataclass(frozen=True)
@@ -111,9 +124,22 @@ class RawDataDropBlock(QGroupBox):
         self.path_label.setWordWrap(True)
         self.path_label.setStyleSheet("color: #4d607a;")
 
+        self.copy_button = QPushButton("Copy Image")
+        self.copy_button.setEnabled(False)
+        self.copy_button.clicked.connect(self._copy_preview_image)
+
+        self.export_button = QPushButton("Export Image")
+        self.export_button.setEnabled(False)
+        self.export_button.clicked.connect(self._export_preview_image)
+
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.copy_button)
+        button_row.addWidget(self.export_button)
+
         layout = QVBoxLayout()
         layout.addWidget(self.preview_label, 1)
         layout.addWidget(self.path_label)
+        layout.addLayout(button_row)
         self.setLayout(layout)
 
     def hasHeightForWidth(self) -> bool:  # noqa: N802 (Qt API name)
@@ -168,11 +194,15 @@ class RawDataDropBlock(QGroupBox):
             self._original_pixmap = result.preview_pixmap
             self.preview_label.setText("")
             self._refresh_pixmap()
+            self.copy_button.setEnabled(True)
+            self.export_button.setEnabled(True)
             return
 
         self._original_pixmap = None
         self.preview_label.setPixmap(QPixmap())
         self.preview_label.setText(result.message)
+        self.copy_button.setEnabled(False)
+        self.export_button.setEnabled(False)
 
     def set_error(self, file_path: str, message: str) -> None:
         """Display a failure message in the block."""
@@ -180,6 +210,8 @@ class RawDataDropBlock(QGroupBox):
         self._original_pixmap = None
         self.preview_label.setPixmap(QPixmap())
         self.preview_label.setText(message)
+        self.copy_button.setEnabled(False)
+        self.export_button.setEnabled(False)
 
     def _first_supported_url(self, urls) -> Optional[str]:
         """Return the first dropped local file that matches this block type."""
@@ -203,6 +235,162 @@ class RawDataDropBlock(QGroupBox):
             Qt.SmoothTransformation,
         )
         self.preview_label.setPixmap(scaled)
+
+    def _copy_preview_image(self) -> None:
+        """Copy the current preview image to the system clipboard."""
+
+        if self._original_pixmap is None or self._original_pixmap.isNull():
+            self.status_message.emit(f"No preview image is available for {self.spec.title}.")
+            return
+
+        QGuiApplication.clipboard().setPixmap(self._original_pixmap)
+        self.status_message.emit(f"{self.spec.title} preview copied to clipboard.")
+
+    def _export_preview_image(self) -> None:
+        """Export the current preview image to a standard image file."""
+
+        if self._original_pixmap is None or self._original_pixmap.isNull():
+            self.status_message.emit(f"No preview image is available for {self.spec.title}.")
+            return
+
+        start_dir = self._start_dir_provider()
+        default_name = f"{self.raw_type}_preview.png"
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Export {self.spec.title} Preview",
+            os.path.join(start_dir, default_name),
+            "PNG Image (*.png);;JPEG Image (*.jpg *.jpeg);;BMP Image (*.bmp);;All Files (*)",
+        )
+        if not save_path:
+            return
+
+        if not self._original_pixmap.save(save_path):
+            self.status_message.emit(f"Failed to export {self.spec.title} preview.")
+            return
+
+        self.status_message.emit(f"{self.spec.title} preview exported to {save_path}.")
+
+
+class AfmDataDropBlock(RawDataDropBlock):
+    """AFM/PFM preview block with channel-selection and metric-overlay controls."""
+
+    file_loaded = pyqtSignal(str)
+
+    def __init__(self, start_dir_provider: Callable[[], str], parent=None):
+        super().__init__("afm", "AFM / PFM (.ibw)", start_dir_provider, parent)
+        self._dataset = None
+        self._current_file_path: Optional[str] = None
+        self._channel_checkboxes: list[QCheckBox] = []
+        self.file_selected.connect(self._load_afm_file)
+
+        self.metric_overlay_checkbox = QCheckBox("Show metric text on image")
+        self.metric_overlay_checkbox.setChecked(False)
+        self.metric_overlay_checkbox.stateChanged.connect(self._rerender_preview)
+
+        self.channel_bar_widget = QWidget()
+        self.channel_bar_layout = QHBoxLayout(self.channel_bar_widget)
+        self.channel_bar_layout.setContentsMargins(0, 0, 0, 0)
+        self.channel_bar_layout.setSpacing(8)
+        self.channel_bar_layout.addStretch(1)
+        self.channel_bar_layout.addWidget(self.metric_overlay_checkbox)
+        self.channel_bar_layout.addWidget(QLabel("Channels:"))
+
+        self.layout().insertWidget(0, self.channel_bar_widget)
+
+    def _load_afm_file(self, raw_type: str, file_path: str) -> None:
+        """Parse one IBW file once, then cache the image stack for fast rerendering."""
+
+        if raw_type != "afm":
+            return
+
+        try:
+            dataset = load_afm_dataset(file_path)
+        except Exception as exc:  # noqa: BLE001
+            self._dataset = None
+            self._current_file_path = None
+            self.set_error(file_path, str(exc))
+            self.status_message.emit(f"AFM visualization failed: {exc}")
+            return
+
+        self._dataset = dataset
+        self._current_file_path = file_path
+        self.path_label.setText(file_path)
+        self._populate_channel_menu(dataset.labels)
+        self.file_loaded.emit(file_path)
+        self._rerender_preview()
+
+    def _populate_channel_menu(self, labels: list[str]) -> None:
+        """Refresh the horizontal channel-checkbox row after a new file is loaded."""
+
+        selected_index = preferred_channel_index(labels)
+        for checkbox in self._channel_checkboxes:
+            self.channel_bar_layout.removeWidget(checkbox)
+            checkbox.deleteLater()
+        self._channel_checkboxes.clear()
+
+        for index, label in enumerate(labels):
+            checkbox = QCheckBox(label)
+            checkbox.setChecked(index == selected_index)
+            checkbox.stateChanged.connect(self._rerender_preview)
+            self.channel_bar_layout.addWidget(checkbox)
+            self._channel_checkboxes.append(checkbox)
+
+    def _selected_channel_indices(self) -> list[int]:
+        """Return the currently selected AFM/PFM channel indices.
+
+        If the user clears the selection, the preferred first channel is used
+        again so the preview always has something sensible to display.
+        """
+
+        if self._dataset is None:
+            return []
+
+        selected_indices = [index for index, checkbox in enumerate(self._channel_checkboxes) if checkbox.isChecked()]
+        if selected_indices:
+            return selected_indices
+
+        fallback_index = preferred_channel_index(self._dataset.labels)
+        if 0 <= fallback_index < len(self._channel_checkboxes):
+            fallback_checkbox = self._channel_checkboxes[fallback_index]
+            fallback_checkbox.blockSignals(True)
+            fallback_checkbox.setChecked(True)
+            fallback_checkbox.blockSignals(False)
+        return [fallback_index]
+
+    def _rerender_preview(self) -> None:
+        """Rerender the preview image using cached AFM/PFM channel data."""
+
+        if self._dataset is None or self._current_file_path is None:
+            return
+
+        options = AfmPreviewOptions(
+            selected_channel_indices=self._selected_channel_indices(),
+            show_metric_overlay=self.metric_overlay_checkbox.isChecked(),
+        )
+
+        try:
+            rendered = render_afm_preview(self._dataset, options)
+            preview_pixmap = _result_to_pixmap(rendered.figure)
+            try:
+                from matplotlib import pyplot as plt
+
+                plt.close(rendered.figure)
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception as exc:  # noqa: BLE001
+            self.set_error(self._current_file_path, str(exc))
+            self.status_message.emit(f"AFM visualization failed: {exc}")
+            return
+
+        self.set_result(
+            self._current_file_path,
+            RawVisualizationResult(
+                backend="pld_workflow.afm_visualization.render_afm_preview",
+                preview_pixmap=preview_pixmap,
+                message=rendered.message,
+            ),
+        )
+        self.status_message.emit(rendered.message)
 
 
 def get_raw_file_spec(raw_type: str) -> RawFileTypeSpec:
@@ -314,83 +502,21 @@ def _run_learn_visualizer(raw_type: str, file_path: str) -> tuple[str, Any]:
 def _run_known_backend(raw_type: str, file_path: str) -> tuple[str, Any] | None:
     """Use direct adapters for the published AFM-tools and XRD-utils packages."""
     if raw_type == "xrd":
-        return _run_xrd_utils_scan(file_path)
+        return render_xrd_preview(file_path)
     if raw_type == "rsm":
-        return _run_xrd_utils_rsm(file_path)
+        return render_rsm_preview(file_path)
     if raw_type == "afm":
-        return _run_afm_tools_ibw(file_path)
+        dataset = load_afm_dataset(file_path)
+        preview = render_afm_preview(
+            dataset,
+            AfmPreviewOptions(
+                selected_channel_index=preferred_channel_index(dataset.labels),
+                show_all_channels=False,
+                show_metric_overlay=False,
+            ),
+        )
+        return "pld_workflow.afm_visualization.render_afm_preview", preview.figure
     return None
-
-
-def _run_xrd_utils_scan(file_path: str) -> tuple[str, Any] | None:
-    """Render a standard XRD scan using `XRD-utils` when it is installed."""
-    try:
-        from matplotlib import pyplot as plt
-        from xrd_utils.xrd_viz import plot_xrd
-    except Exception:  # noqa: BLE001
-        return None
-
-    figure, axis = plt.subplots(figsize=(6, 4))
-    plot_xrd([file_path], [os.path.basename(file_path)], fig=figure, ax=axis, diff=None, yscale="log")
-    figure.tight_layout()
-    return "xrd_utils.xrd_viz.plot_xrd", figure
-
-
-def _run_xrd_utils_rsm(file_path: str) -> tuple[str, Any] | None:
-    """Render an RSM map using `XRD-utils` when it is installed."""
-    try:
-        from matplotlib import pyplot as plt
-        from xrd_utils.rsm_viz import RSMPlotter
-    except Exception:  # noqa: BLE001
-        return None
-
-    figure, axis = plt.subplots(figsize=(6, 5))
-    plotter = RSMPlotter()
-    plotter.plot(file_path, ax=axis)
-    figure.tight_layout()
-    return "xrd_utils.rsm_viz.RSMPlotter.plot", figure
-
-
-def _run_afm_tools_ibw(file_path: str) -> tuple[str, Any] | None:
-    """Render an AFM image using `AFM-tools` when it is installed."""
-    try:
-        import numpy as np
-        from afm_tools.afm_utils import parse_ibw
-        from afm_tools.afm_viz import AFMVisualizer
-    except Exception:  # noqa: BLE001
-        return None
-
-    images, sample_name, labels, scan_size = parse_ibw(file_path)
-    if images.ndim != 3 or images.shape[2] == 0:
-        raise RuntimeError("AFM-tools parsed the file, but no image channels were returned.")
-
-    channel_index = 0
-    preferred_labels = ("Height", "ZSensor", "Amplitude", "Phase")
-    for preferred_label in preferred_labels:
-        if preferred_label in labels:
-            channel_index = labels.index(preferred_label)
-            break
-
-    image = np.asarray(images[:, :, channel_index])
-    visualizer = AFMVisualizer(
-        colorbar_setting={
-            "colorbar_type": "percent",
-            "colorbar_range": (0.2, 99.8),
-            "outliers_std": 5,
-            "symmetric_clim": False,
-            "visible": True,
-        },
-        zero_mean=False,
-        scalebar=True,
-        debug=False,
-    )
-    figure, _axis = visualizer.viz(
-        img=image,
-        scan_size=scan_size,
-        title=f"{sample_name} - {labels[channel_index]}",
-    )
-    figure.tight_layout()
-    return "afm_tools.afm_viz.AFMVisualizer.viz", figure
 
 
 def _result_to_pixmap(result: Any) -> Optional[QPixmap]:
