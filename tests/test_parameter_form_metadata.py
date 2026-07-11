@@ -56,15 +56,15 @@ def test_html_report_uses_refactored_target_sections(tmp_path):
     assert "Target Setup" in html
     assert "Heater Position" in html
     assert "Mask and Spot" in html
-    assert "Laser" in html
     assert "RHEED Adjustment" in html
 
     # Preparation sub-sections
     assert "Pre-Annealing" in html
-    assert "Growth Condition" in html
     assert "Cool Down" in html
 
     # Deposition sub-sections
+    assert "Laser" in html
+    assert "Growth Temperature" in html
     assert "Pre-Ablation" in html
     assert "Ablation" in html
 
@@ -72,5 +72,5 @@ def test_html_report_uses_refactored_target_sections(tmp_path):
     assert "Post-Annealing Temperature" not in html
     assert "Post-Annealing Hold Time" not in html
 
-    # Verify value appears in Growth Condition sub-section
+    # Verify value appears in Growth Temperature sub-section
     assert "650.0" in html

@@ -187,24 +187,6 @@ def _instrument_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
             ],
         ),
         (
-            "Laser",
-            [
-                ("Laser Voltage (kV)", ("Laser Voltage (kV)", "Laser Voltage(kV)")),
-                ("Laser Energy (mJ)", ("Laser Energy (mJ)", "Laser Energy(mJ)")),
-                (
-                    "Measured Energy (mJ)",
-                    (
-                        "Measured Energy (mJ)",
-                        "Measured Energy(mJ)",
-                        "Targeted Measured Energy (mJ)",
-                        "Targeted Measured Energy(mJ)",
-                        "Measured Energy Mean(mJ)",
-                    ),
-                ),
-                ("Fluence (J/cm^2)", ("Fluence (J/cm^2)", "Fluence")),
-            ],
-        ),
-        (
             "RHEED Adjustment",
             [
                 ("Tilt (deg)", ("Tilt (deg)", "Tilt", "Tile")),
@@ -260,45 +242,6 @@ def _preparation_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
             ],
         ),
         (
-            "Growth Condition",
-            [
-                (
-                    "Heating Rate (\N{DEGREE SIGN}C/min)",
-                    (
-                        "Growth Condition Heating Rate (\N{DEGREE SIGN}C/min)",
-                        "Pre-Annealing Heating Rate (\N{DEGREE SIGN}C/min)",
-                        "Pre-Annealing Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
-                        "Pre-Annealing Cool/Heat Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
-                        "Pre-Annealing Cooling Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
-                    ),
-                ),
-                (
-                    "Temperature (\N{DEGREE SIGN}C)",
-                    (
-                        "Ablation Temperature (\N{DEGREE SIGN}C)",
-                        "Ablation-Temperature(\N{DEGREE SIGN}C)",
-                        "Ablation Temperature (degC)",
-                        "Pre-Annealing Growth Temperature (\N{DEGREE SIGN}C)",
-                        "Pre-Annealing Growth Temperature (degC)",
-                        "Growth Temperature (\N{DEGREE SIGN}C)",
-                        "Growth Temperature (degC)",
-                    ),
-                ),
-                (
-                    "Atmosphere Gas",
-                    ("Ablation Atmosphere Gas", "Ablation-Atmosphere Gas"),
-                ),
-                (
-                    "Pressure (mbar)",
-                    ("Growth Pressure (mbar)", "Ablation Pressure (mbar)"),
-                ),
-                (
-                    "Pressure (mTorr)",
-                    ("Growth Pressure (mTorr)", "Ablation Pressure (mTorr)", "Ablation-Pressure(mTorr)"),
-                ),
-            ],
-        ),
-        (
             "Cool Down",
             [
                 (
@@ -328,6 +271,68 @@ def _preparation_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
 def _deposition_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
     """Return section definitions for per-target Deposition cards."""
     return [
+        (
+            "Laser",
+            [
+                ("Laser Voltage (kV)", ("Laser Voltage (kV)", "Laser Voltage(kV)")),
+                ("Laser Energy (mJ)", ("Laser Energy (mJ)", "Laser Energy(mJ)")),
+                (
+                    "Measured Energy (mJ)",
+                    (
+                        "Measured Energy (mJ)",
+                        "Measured Energy(mJ)",
+                        "Targeted Measured Energy (mJ)",
+                        "Targeted Measured Energy(mJ)",
+                        "Measured Energy Mean(mJ)",
+                    ),
+                ),
+                ("Fluence (J/cm^2)", ("Fluence (J/cm^2)", "Fluence")),
+            ],
+        ),
+        (
+            "Growth Temperature",
+            [
+                (
+                    "Heating Rate (\N{DEGREE SIGN}C/min)",
+                    (
+                        "Growth Condition Heating Rate (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Heating Rate (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Cool/Heat Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Cooling Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
+                    ),
+                ),
+                (
+                    "Temperature (\N{DEGREE SIGN}C)",
+                    (
+                        "Ablation Temperature (\N{DEGREE SIGN}C)",
+                        "Ablation-Temperature(\N{DEGREE SIGN}C)",
+                        "Ablation Temperature (degC)",
+                        "Pre-Annealing Growth Temperature (\N{DEGREE SIGN}C)",
+                        "Pre-Annealing Growth Temperature (degC)",
+                        "Growth Temperature (\N{DEGREE SIGN}C)",
+                        "Growth Temperature (degC)",
+                    ),
+                ),
+            ],
+        ),
+        (
+            "Atmosphere",
+            [
+                (
+                    "Atmosphere Gas",
+                    ("Ablation Atmosphere Gas", "Ablation-Atmosphere Gas"),
+                ),
+                (
+                    "Pressure (mbar)",
+                    ("Growth Pressure (mbar)", "Ablation Pressure (mbar)"),
+                ),
+                (
+                    "Pressure (mTorr)",
+                    ("Growth Pressure (mTorr)", "Ablation Pressure (mTorr)", "Ablation-Pressure(mTorr)"),
+                ),
+            ],
+        ),
         (
             "Pre-Ablation",
             [

@@ -204,6 +204,7 @@ dependencies:
   - pycparser=2.22
   - pygments=2.19.2
   - pyparsing=3.3.2
+  - pyqt=5
   - pyqt5-sip=12.17.0
   - pyside6=6.10.2
   - pysocks=1.7.1
@@ -290,8 +291,6 @@ dependencies:
       - networkx==3.4.2
       - pandas==1.4.1
       - protobuf==3.20.1
-      - pyqt5==5.15.6
-      - pyqt5-qt5==5.15.18
       - pywavelets==1.4.1
       - scikit-image==0.19.2
       - scipy==1.15.3

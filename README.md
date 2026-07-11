@@ -12,7 +12,15 @@ Optional analysis utilities live separately so the common recorder workflow stay
 
 ## Install from a Git clone
 
-From the repository root:
+### With Conda (recommended on Linux)
+
+```bash
+conda env create -f environment.yml
+conda activate pld
+python -m pip install -e ".[analysis,visualization,build,docs]"
+```
+
+### With pip only
 
 ```bash
 python -m pip install --upgrade pip
@@ -20,10 +28,34 @@ python -m pip install -r requirements.txt
 python -m pip install -e ".[analysis,visualization,build,docs]"
 ```
 
+> **Linux note:** On Linux, installing PyQt5 via pip may fail with an xcb platform plugin error. Install PyQt5 from conda instead (`conda install -c conda-forge pyqt=5`), or install the missing system library: `sudo apt install libxcb-cursor0`.
+
 If you only want to fix the visualizer backend on an existing environment, this is the minimum command:
 
 ```bash
 python -m pip install "AFM-tools>=2.1.0" XRD-utils xrayutilities matplotlib
+```
+
+## WSL display setup
+
+If running on WSL, Qt apps need a display path. Choose one option:
+
+### WSLg (recommended — Win 11 / recent Win 10)
+
+WSLg is built in. Add this line to `~/.bashrc` so it applies every session:
+
+```bash
+echo 'export QT_QPA_PLATFORM=wayland' >> ~/.bashrc
+```
+
+Then reload with `source ~/.bashrc` or open a new terminal.
+
+### X server fallback
+
+If WSLg isn't available, install [VcXsrv](https://sourceforge.net/projects/vcxsrv/) on Windows, launch it, then add to `~/.bashrc`:
+
+```bash
+echo 'export DISPLAY=$(ip route | awk '\''/default/ {print $3}'\''):0' >> ~/.bashrc
 ```
 
 ## Launch the apps
@@ -50,22 +82,33 @@ python examples/launch_afm_pfm_visualizer.py
 python examples/launch_rheed_imm_visualizer.py
 ```
 
-Optional analysis runner:
+## App details
+
+### Parameter Form
+Records PLD growth parameters. Saves JSON and exports HTML reports.
+
+### Plume Manager
+Handles plume workspace creation from PLD JSON metadata — staging raw files, previewing frames, and packing/editing metadata. Features:
+- Create target folders from a PLD JSON record, including `<target>_Pre` folders when pre-ablation pulses are listed
+- Workspace browser for `target/raw` and `target/BMP/plume/frame` folders
+- H5 browser to inspect packed archive structure and preview individual frames
+- Load and edit recorder JSON metadata before packing
+
+### XRD Visualizer
+Quick XRD/RSM raw-data previews. Supports XRD scan and RSM file selection in the UI. Backend depends on XRD helper packages (`XRD-utils`, `xrayutilities`).
+
+### AFM/PFM Visualizer
+AFM/PFM channel review with roughness-aware previews. Supports quick single-channel review plus a comprehensive multi-channel mode. Backend depends on AFM helper packages (`AFM-tools`).
+
+### RHEED/IMM Visualizer
+Lightweight IMM movie inspection.
+
+### Parameter Trend Analyzer
+Ad hoc review of historical JSON records. Runs separately from the recorder:
 
 ```bash
 python scripts/run_parameter_trend_demo.py
 ```
-
-## Notes on scope
-
-- The parameter recorder saves JSON and HTML reports.
-- The plume manager is intentionally separate from the recorder, but it can load and edit recorder JSON metadata before packing.
-- The plume manager can create target folders directly from a PLD JSON record, including optional `<target>_Pre` folders when pre-ablation pulses are listed.
-- The plume manager now includes a workspace browser for `target/raw` and `target/BMP/plume/frame` folders, plus an H5 browser so you can inspect packed archive structure and preview individual frames after packing.
-- The parameter trend analyzer is also separate from the recorder and is meant for ad hoc review of historical JSON records.
-- The XRD visualizer supports XRD scan and RSM file selection in the UI.
-- The AFM/PFM visualizer supports quick single-channel review plus a comprehensive multi-channel mode.
-- The actual plotting backend still depends on whichever XRD/AFM helper packages are installed in your environment.
 
 ## Windows executable builds
 
@@ -149,10 +192,10 @@ Expected outputs:
 - `dist/PLDAFMPFMVisualizer.exe`
 - `dist/PLDRHEEDIMMVisualizer.exe`
 
-Notes:
+Build notes:
 
-- The Python build helper now performs the PyInstaller work in a temporary folder outside the repo and only copies the final fresh result back into `dist/`. This avoids stale `build/` folders and reduces Dropbox file-lock issues.
-- The build helper still accepts legacy aliases like `parameter`, `plume`, `visualizer`, and `afm_visualizer`, but the newer direct names are the recommended ones.
+- The build helper performs PyInstaller work in a temporary folder outside the repo and only copies the final result into `dist/`, avoiding stale `build/` folders and Dropbox file-lock issues.
+- Legacy aliases (`parameter`, `plume`, `visualizer`, `afm_visualizer`) are still accepted, but the new direct names are recommended.
 - The diffraction visualizer build explicitly bundles `XRD-utils` and `xrayutilities`.
 - The AFM visualizer build explicitly bundles `AFM-tools`.
 

@@ -390,6 +390,10 @@ class GenerateForm(QWidget):
         self.target_material_stack = QStackedWidget(self)
         self.Stack = QStackedWidget(self)
 
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        self.status_label.setProperty("role", "section-note")
+
     @staticmethod
     def _area_row(width_widget: QLineEdit, height_widget: QLineEdit, area_widget: QLineEdit) -> QWidget:
         """Create one row widget for width/height/area inputs."""
@@ -495,6 +499,8 @@ class GenerateForm(QWidget):
             self.form_notes.setParent(None)
         if self.cool_down_gas.parentWidget() is not None:
             self.cool_down_gas.setParent(None)
+        if self.status_label.parentWidget() is not None:
+            self.status_label.setParent(None)
 
         if self.shared_container is not None:
             self.toplayout.removeWidget(self.shared_container)
@@ -551,26 +557,6 @@ class GenerateForm(QWidget):
         layout_mask_spot.addRow(QLabel("Spot Area"), self.spot_area_input[shared_index])
         layout_mask_spot.addRow(QLabel("Magnification"), self.magnification_input[shared_index])
 
-        form_laser = QGroupBox("Laser")
-        laser_grid = QGridLayout()
-        laser_grid.setContentsMargins(10, 8, 10, 10)
-        laser_grid.setHorizontalSpacing(10)
-        laser_grid.setVerticalSpacing(6)
-        form_laser.setLayout(laser_grid)
-        laser_left = self._compact_form_layout()
-        laser_right = self._compact_form_layout()
-        laser_grid.addLayout(laser_left, 0, 0)
-        laser_grid.addLayout(laser_right, 0, 1)
-        laser_grid.setColumnStretch(0, 1)
-        laser_grid.setColumnStretch(1, 1)
-        laser_left.addRow(QLabel("Fluence (J/cm^2)"), self.fluence_input[shared_index])
-        laser_left.addRow(QLabel("Energy (mJ)"), self.laser_energy_input[shared_index])
-        laser_right.addRow(QLabel("Voltage (kV)"), self.laser_voltage_input[shared_index])
-        laser_right.addRow(
-            QLabel("Measured Energy (mJ)"),
-            self.measured_energy_input[shared_index],
-        )
-
         form_rheed, layout_rheed = self._build_form_group("RHEED Adjustment")
         layout_rheed.addRow(QLabel("Tilt (deg)"), self.heater_tilt_input[shared_index])
         layout_rheed.addRow(QLabel("Azimuth (deg)"), self.heater_azimuth_input[shared_index])
@@ -578,11 +564,11 @@ class GenerateForm(QWidget):
         instrument_grid.addWidget(form_target_parameters, 0, 0)
         instrument_grid.addWidget(form_heater, 0, 1)
         instrument_grid.addWidget(form_mask_spot, 0, 2)
-        instrument_grid.addWidget(form_laser, 1, 0, 1, 2)
-        instrument_grid.addWidget(form_rheed, 1, 2)
-        instrument_grid.setColumnStretch(0, 1)
-        instrument_grid.setColumnStretch(1, 1)
-        instrument_grid.setColumnStretch(2, 1)
+        instrument_grid.addWidget(form_rheed, 0, 3)
+        instrument_grid.setColumnStretch(0, 3)
+        instrument_grid.setColumnStretch(1, 2)
+        instrument_grid.setColumnStretch(2, 2)
+        instrument_grid.setColumnStretch(3, 2)
         body_layout.addWidget(instrument_group)
 
         process_group = QGroupBox("Preparation")
@@ -593,20 +579,31 @@ class GenerateForm(QWidget):
         process_grid.setVerticalSpacing(12)
         process_layout.addLayout(process_grid)
 
-        form_pre_annealing, layout_pre_annealing = self._build_form_group("Pre-Annealing")
-        layout_pre_annealing.addRow(
+        form_pre_annealing = QGroupBox("Pre-Annealing")
+        pre_grid = QGridLayout()
+        pre_grid.setContentsMargins(10, 8, 10, 10)
+        pre_grid.setHorizontalSpacing(12)
+        pre_grid.setVerticalSpacing(6)
+        form_pre_annealing.setLayout(pre_grid)
+        pre_left = self._compact_form_layout()
+        pre_right = self._compact_form_layout()
+        pre_grid.addLayout(pre_left, 0, 0)
+        pre_grid.addLayout(pre_right, 0, 1)
+        pre_grid.setColumnStretch(0, 1)
+        pre_grid.setColumnStretch(1, 1)
+        pre_left.addRow(
             QLabel("Heat Rate (\N{DEGREE SIGN}C/min)"),
             self.pre_annealing_heating_speed_input[shared_index],
         )
-        layout_pre_annealing.addRow(
+        pre_left.addRow(
             QLabel("Anneal Temperature (\N{DEGREE SIGN}C)"),
             self.pre_annealing_temperature_input[shared_index],
         )
-        layout_pre_annealing.addRow(
+        pre_left.addRow(
             QLabel("Hold Time (min)"),
             self.pre_annealing_time_input[shared_index],
         )
-        layout_pre_annealing.addRow(
+        pre_right.addRow(
             QLabel("Pressure"),
             self._pressure_row(
                 self.pre_annealing_pressure_mbar_input[shared_index],
@@ -614,31 +611,24 @@ class GenerateForm(QWidget):
             ),
         )
 
-        form_growth_condition, layout_growth_condition = self._build_form_group("Growth Condition")
-        layout_growth_condition.addRow(
-            QLabel("Heating Rate (\N{DEGREE SIGN}C/min)"),
-            self.pre_annealing_growth_rate_input[shared_index],
-        )
-        layout_growth_condition.addRow(
-            QLabel("Temperature (\N{DEGREE SIGN}C)"),
-            self.temperature_input[shared_index],
-        )
-        layout_growth_condition.addRow(QLabel("Atmosphere"), self.gas_input[shared_index])
-        layout_growth_condition.addRow(
-            QLabel("Pressure"),
-            self._pressure_row(
-                self.growth_pressure_mbar_input[shared_index],
-                self.growth_pressure_input[shared_index],
-            ),
-        )
-
-        form_post_annealing, layout_post_annealing = self._build_form_group("Cool Down")
-        layout_post_annealing.addRow(
+        form_post_annealing = QGroupBox("Cool Down")
+        post_grid = QGridLayout()
+        post_grid.setContentsMargins(10, 8, 10, 10)
+        post_grid.setHorizontalSpacing(12)
+        post_grid.setVerticalSpacing(6)
+        form_post_annealing.setLayout(post_grid)
+        post_left = self._compact_form_layout()
+        post_right = self._compact_form_layout()
+        post_grid.addLayout(post_left, 0, 0)
+        post_grid.addLayout(post_right, 0, 1)
+        post_grid.setColumnStretch(0, 1)
+        post_grid.setColumnStretch(1, 1)
+        post_left.addRow(
             QLabel("Cooling Rate (\N{DEGREE SIGN}C/min)"),
             self.post_annealing_cool_rate_input[shared_index],
         )
-        layout_post_annealing.addRow(QLabel("Atmosphere"), self.cool_down_gas)
-        layout_post_annealing.addRow(
+        post_left.addRow(QLabel("Atmosphere"), self.cool_down_gas)
+        post_right.addRow(
             QLabel("Pressure"),
             self._pressure_row(
                 self.post_annealing_pressure_mbar_input[shared_index],
@@ -661,14 +651,13 @@ class GenerateForm(QWidget):
         deposition_layout.setColumnStretch(2, 0)
 
         process_grid.addWidget(form_pre_annealing, 0, 0)
-        process_grid.addWidget(form_growth_condition, 0, 1)
-        process_grid.addWidget(form_post_annealing, 0, 2)
-        process_grid.addWidget(deposition_group, 1, 0, 1, 2)
-        process_grid.addWidget(self.form_notes, 1, 2)
+        process_grid.addWidget(form_post_annealing, 0, 1)
         process_grid.setColumnStretch(0, 1)
         process_grid.setColumnStretch(1, 1)
-        process_grid.setColumnStretch(2, 1)
         body_layout.addWidget(process_group)
+        body_layout.addWidget(deposition_group)
+        body_layout.addWidget(self.form_notes)
+        body_layout.addWidget(self.status_label)
         body_layout.addStretch(1)
 
     def stackUI(self, create_index: int) -> QVBoxLayout:
@@ -683,6 +672,46 @@ class GenerateForm(QWidget):
         deposition_grid.setVerticalSpacing(8)
         page_layout.addLayout(deposition_grid)
 
+        form_laser = QGroupBox("Laser")
+        laser_grid = QGridLayout()
+        laser_grid.setContentsMargins(10, 8, 10, 10)
+        laser_grid.setHorizontalSpacing(10)
+        laser_grid.setVerticalSpacing(6)
+        form_laser.setLayout(laser_grid)
+        laser_left = self._compact_form_layout()
+        laser_right = self._compact_form_layout()
+        laser_grid.addLayout(laser_left, 0, 0)
+        laser_grid.addLayout(laser_right, 0, 1)
+        laser_grid.setColumnStretch(0, 1)
+        laser_grid.setColumnStretch(1, 1)
+        laser_left.addRow(QLabel("Voltage (kV)"), self.laser_voltage_input[create_index])
+        laser_left.addRow(QLabel("Fluence (J/cm^2)"), self.fluence_input[create_index])
+        laser_right.addRow(QLabel("Energy (mJ)"), self.laser_energy_input[create_index])
+        laser_right.addRow(
+            QLabel("Measured Energy (mJ)"),
+            self.measured_energy_input[create_index],
+        )
+
+        form_growth_temp, layout_growth_temp = self._build_form_group("Growth Temperature")
+        layout_growth_temp.addRow(
+            QLabel("Heating Rate (\N{DEGREE SIGN}C/min)"),
+            self.pre_annealing_growth_rate_input[create_index],
+        )
+        layout_growth_temp.addRow(
+            QLabel("Temperature (\N{DEGREE SIGN}C)"),
+            self.temperature_input[create_index],
+        )
+
+        form_atmosphere, layout_atmosphere = self._build_form_group("Atmosphere")
+        layout_atmosphere.addRow(QLabel("Atmosphere"), self.gas_input[create_index])
+        layout_atmosphere.addRow(
+            QLabel("Pressure"),
+            self._pressure_row(
+                self.growth_pressure_mbar_input[create_index],
+                self.growth_pressure_input[create_index],
+            ),
+        )
+
         form_pre_ablation, layout_pre_ablation = self._build_form_group("Pre-Ablation")
         layout_pre_ablation.addRow(QLabel("Frequency (Hz)"), self.pre_frequency_input[create_index])
         layout_pre_ablation.addRow(QLabel("Pulses (count)"), self.pre_number_pulses_input[create_index])
@@ -691,10 +720,17 @@ class GenerateForm(QWidget):
         layout_ablation.addRow(QLabel("Frequency (Hz)"), self.frequency_input[create_index])
         layout_ablation.addRow(QLabel("Pulses (count)"), self.number_pulses_input[create_index])
 
-        deposition_grid.addWidget(form_pre_ablation, 0, 0)
-        deposition_grid.addWidget(form_ablation, 0, 1)
+        for form in (form_laser, form_growth_temp, form_atmosphere, form_pre_ablation, form_ablation):
+            form.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+
+        deposition_grid.addWidget(form_laser, 0, 0, 1, 2)
+        deposition_grid.addWidget(form_growth_temp, 0, 2)
+        deposition_grid.addWidget(form_atmosphere, 1, 0)
+        deposition_grid.addWidget(form_pre_ablation, 1, 1)
+        deposition_grid.addWidget(form_ablation, 1, 2)
         deposition_grid.setColumnStretch(0, 1)
         deposition_grid.setColumnStretch(1, 1)
+        deposition_grid.setColumnStretch(2, 1)
 
         return page_layout
 
@@ -1091,11 +1127,11 @@ class GenerateForm(QWidget):
             with open(file_path, "r", encoding="utf-8") as file:
                 info_dict = json.load(file)
         except (OSError, json.JSONDecodeError) as exc:
-            self.show_message_window(f"Failed to load JSON: {exc}")
+            self.status_label.setText(f"Failed to load JSON: {exc}")
             return
 
         self._apply_info_dict(info_dict, source_path=file_path)
-        self.show_message_window("Parameters loaded!")
+        self.status_label.setText("Parameters loaded!")
 
     def get_info(self) -> Dict[str, Dict[str, Any]]:
         """Collect all non-empty form values into a nested dictionary."""
@@ -1128,10 +1164,10 @@ class GenerateForm(QWidget):
                 "Heater Position Z (mm)": self.heater_position_z_input[shared_index].text(),
                 "Tilt (deg)": self.heater_tilt_input[shared_index].text(),
                 "Azimuth (deg)": self.heater_azimuth_input[shared_index].text(),
-                "Fluence (J/cm^2)": self.fluence_input[shared_index].text(),
-                "Laser Energy (mJ)": self.laser_energy_input[shared_index].text(),
-                "Laser Voltage (kV)": self.laser_voltage_input[shared_index].text(),
-                "Measured Energy (mJ)": self.measured_energy_input[shared_index].text(),
+                "Fluence (J/cm^2)": self.fluence_input[i].text(),
+                "Laser Energy (mJ)": self.laser_energy_input[i].text(),
+                "Laser Voltage (kV)": self.laser_voltage_input[i].text(),
+                "Measured Energy (mJ)": self.measured_energy_input[i].text(),
                 "Mask Width (mm)": self.mask_width_input[shared_index].text(),
                 "Mask Height (mm)": self.mask_height_input[shared_index].text(),
                 "Mask Area (mm^2)": self.mask_area_input[shared_index].text(),
@@ -1149,15 +1185,15 @@ class GenerateForm(QWidget):
                 ].text(),
                 "Pre-Annealing Time (min)": self.pre_annealing_time_input[shared_index].text(),
                 "Growth Condition Heating Rate (\N{DEGREE SIGN}C/min)": self.pre_annealing_growth_rate_input[
-                    shared_index
+                    i
                 ].text(),
                 "Pre-Annealing Pressure (mbar)": self.pre_annealing_pressure_mbar_input[shared_index].text(),
                 "Pre-Annealing Pressure (mTorr)": self.pre_annealing_pressure_input[
                     shared_index
                 ].text(),
-                "Growth Pressure (mbar)": self.growth_pressure_mbar_input[shared_index].text(),
+                "Growth Pressure (mbar)": self.growth_pressure_mbar_input[i].text(),
                 "Growth Pressure (mTorr)": self.growth_pressure_input[
-                    shared_index
+                    i
                 ].text(),
                 "Post-Annealing Cooling Rate (\N{DEGREE SIGN}C/min)": self.post_annealing_cool_rate_input[
                     shared_index
@@ -1166,8 +1202,8 @@ class GenerateForm(QWidget):
                 "Post-Annealing Pressure (mTorr)": self.post_annealing_pressure_input[
                     shared_index
                 ].text(),
-                "Ablation Temperature (\N{DEGREE SIGN}C)": self.temperature_input[shared_index].text(),
-                "Ablation Atmosphere Gas": self.gas_input[shared_index].currentText(),
+                "Ablation Temperature (\N{DEGREE SIGN}C)": self.temperature_input[i].text(),
+                "Ablation Atmosphere Gas": self.gas_input[i].currentText(),
                 "Ablation Frequency (Hz)": self.frequency_input[i].text(),
                 "Ablation Pulses (count)": self.number_pulses_input[i].text(),
             }
@@ -1198,11 +1234,11 @@ class GenerateForm(QWidget):
                 file_stem=self._default_file_stem(),
             )
         except OSError as exc:
-            self.show_message_window(f"Failed to save JSON: {exc}")
+            self.status_label.setText(f"Failed to save JSON: {exc}")
             return
 
         if result.html_error:
-            self.show_message_window(f"JSON saved. HTML export failed: {result.html_error}")
+            self.status_label.setText(f"JSON saved. HTML export failed: {result.html_error}")
             return
 
-        self.show_message_window("Parameters saved to JSON and HTML!")
+        self.status_label.setText("Parameters saved to JSON and HTML!")
