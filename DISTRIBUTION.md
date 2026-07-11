@@ -20,6 +20,9 @@ Console entry points:
 pld-parameter-form
 pld-plume-manager
 pld-raw-visualizer
+pld-xrd-visualizer
+pld-afm-pfm-visualizer
+pld-rheed-imm-visualizer
 ```
 
 ## 2. Windows executable builds
@@ -27,24 +30,30 @@ pld-raw-visualizer
 From PowerShell in the repository root:
 
 ```powershell
-./scripts/build_windows_exe.ps1 -App parameter
-./scripts/build_windows_exe.ps1 -App plume
-./scripts/build_windows_exe.ps1 -App visualizer
+./scripts/build_windows_exe.ps1 -App parameter_form
+./scripts/build_windows_exe.ps1 -App plume_manager
+./scripts/build_windows_exe.ps1 -App xrd_visualizer
+./scripts/build_windows_exe.ps1 -App afm_pfm_visualizer
+./scripts/build_windows_exe.ps1 -App rheed_imm_visualizer
 ```
 
 For a single-file executable:
 
 ```powershell
-./scripts/build_windows_exe.ps1 -App parameter -OneFile
+./scripts/build_windows_exe.ps1 -App plume_manager -OneFile
 ```
 
 Output names:
 
-- `parameter` -> `dist/PLDParameterForm/` or `dist/PLDParameterForm.exe`
-- `plume` -> `dist/PLDPlumeManager/` or `dist/PLDPlumeManager.exe`
-- `visualizer` -> `dist/PLDRawVisualizer/` or `dist/PLDRawVisualizer.exe`
+- `parameter_form` -> `dist/PLDParameterForm/` or `dist/PLDParameterForm.exe`
+- `plume_manager` -> `dist/PLDPlumeManager/` or `dist/PLDPlumeManager.exe`
+- `xrd_visualizer` -> `dist/PLDXRDVisualizer/` or `dist/PLDXRDVisualizer.exe`
+- `afm_pfm_visualizer` -> `dist/PLDAFMPFMVisualizer/` or `dist/PLDAFMPFMVisualizer.exe`
+- `rheed_imm_visualizer` -> `dist/PLDRHEEDIMMVisualizer/` or `dist/PLDRHEEDIMMVisualizer.exe`
 
 ## 3. Publishing suggestion
 
-For Windows users, publish the built artifacts from `dist/` as GitHub Release assets.
-Add code signing later if SmartScreen warnings become a problem.
+- Prefer sharing the source repo plus install/build instructions when collaborators already have Python available.
+- For non-Python end users, publish the built artifacts from `dist/` as GitHub Release assets or upload the zipped output folder to shared storage such as Dropbox or OneDrive.
+- Avoid committing large `.exe` files into Git history.
+- Add code signing later if SmartScreen warnings become a problem.

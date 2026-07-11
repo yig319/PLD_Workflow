@@ -13,13 +13,13 @@ dependencies = [
 ]
 
 [project.scripts]
-pld-parameter-form = "pld_workflow.parameter_form_app:main"
-pld-plume-manager = "pld_workflow.plume_manager_app:main"
-pld-xrd-visualizer = "pld_workflow.xrd_visualizer_app:main"
-pld-afm-pfm-visualizer = "pld_workflow.afm_pfm_visualizer_app:main"
-pld-rheed-imm-visualizer = "pld_workflow.rheed_imm_visualizer_app:main"
-pld-raw-visualizer = "pld_workflow.xrd_visualizer_app:main"
-pld-afm-visualizer = "pld_workflow.afm_pfm_visualizer_app:main"
+pld-parameter-form = "pld_workflow.apps.parameter_form:main"
+pld-plume-manager = "pld_workflow.apps.plume_manager:main"
+pld-xrd-visualizer = "pld_workflow.apps.xrd_visualizer:main"
+pld-afm-pfm-visualizer = "pld_workflow.apps.afm_pfm_visualizer:main"
+pld-rheed-imm-visualizer = "pld_workflow.apps.rheed_imm_visualizer:main"
+pld-raw-visualizer = "pld_workflow.apps.xrd_visualizer:main"
+pld-afm-visualizer = "pld_workflow.apps.afm_pfm_visualizer:main"
 
 [project.optional-dependencies]
 analysis = [
@@ -32,7 +32,7 @@ analysis = [
   "seaborn",
 ]
 visualization = [
-  "AFM-tools",
+  "AFM-tools>=2.1.0",
   "matplotlib>=3.5",
   "XRD-utils",
   "xrayutilities",

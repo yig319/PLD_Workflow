@@ -58,7 +58,7 @@ def save_parameters_json_and_html(
     normalized = coerce_numeric_values(info_dict)
     json_path = os.path.join(output_dir, f"{file_stem}.json")
     with open(json_path, "w", encoding="utf-8") as handle:
-        json.dump(normalized, handle)
+        json.dump(normalized, handle, indent=2)
 
     html_path = os.path.join(output_dir, f"{file_stem}.html")
     try:
@@ -154,83 +154,227 @@ def _render_html_table(headers: List[str], rows: List[List[Any]], show_header: b
     return f"<table><tbody>{body}</tbody></table>"
 
 
-def _target_section_spec() -> List[Tuple[str, List[str]]]:
-    """Return ordered target section definitions used in HTML export."""
+def _instrument_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
+    """Return section definitions for the Instrument card (shared across targets)."""
     return [
         (
-            "Target Parameters",
+            "Target Setup",
             [
-                "Target Material",
-                "Offset X (mm)",
-                "Offset Y (mm)",
-                "Scan Diameter (mm)",
-                "Scan Speed X/Z (mm/s)",
+                ("Offset X (mm)", ("Offset X (mm)", "Offset X")),
+                ("Offset Y (mm)", ("Offset Y (mm)", "Offset Y")),
+                ("Scan Diameter (mm)", ("Scan Diameter (mm)", "Scan Diameter")),
+                ("Scan Speed X/Z (mm/s)", ("Scan Speed X/Z (mm/s)",)),
             ],
         ),
         (
-            "Heater Parameter",
+            "Heater Position",
             [
-                "Heater Position X (mm)",
-                "Heater Position Y (mm)",
-                "Heater Position Z (mm)",
-                "Tilt (deg)",
-                "Azimuth (deg)",
-            ],
-        ),
-        (
-            "Laser and Mask",
-            [
-                "Laser Voltage (kV)",
-                "Laser Energy (mJ)",
-                "Targeted Measured Energy (mJ)",
-                "Fluence (J/cm^2)",
+                ("Position X (mm)", ("Heater Position X (mm)", "Heater Position X")),
+                ("Position Y (mm)", ("Heater Position Y (mm)", "Heater Position Y")),
+                ("Position Z (mm)", ("Heater Position Z (mm)", "Heater Position Z")),
             ],
         ),
         (
             "Mask and Spot",
             [
-                "Mask Width (mm)",
-                "Mask Height (mm)",
-                "Mask Area (mm^2)",
-                "Spot Width (mm)",
-                "Spot Height (mm)",
-                "Spot Area (mm^2)",
-                "Magnification (x)",
+                ("Mask Width (mm)", ("Mask Width (mm)", "Mask Width")),
+                ("Mask Height (mm)", ("Mask Height (mm)", "Mask Height")),
+                ("Mask Area (mm^2)", ("Mask Area (mm^2)", "Mask Area")),
+                ("Spot Width (mm)", ("Spot Width (mm)", "Spot Width")),
+                ("Spot Height (mm)", ("Spot Height (mm)", "Spot Height")),
+                ("Spot Area (mm^2)", ("Spot Area (mm^2)", "Spot Area")),
+                ("Magnification (x)", ("Magnification (x)", "Magnification")),
             ],
         ),
         (
-            "Pre-annealing",
+            "Laser",
             [
-                "Pre-Annealing Temperature (\N{DEGREE SIGN}C)",
-                "Pre-Annealing Heating Speed (\N{DEGREE SIGN}C/min)",
-                "Pre-Annealing Time (min)",
-                "Pre-Annealing Atmosphere Pressure (mTorr)",
+                ("Laser Voltage (kV)", ("Laser Voltage (kV)", "Laser Voltage(kV)")),
+                ("Laser Energy (mJ)", ("Laser Energy (mJ)", "Laser Energy(mJ)")),
+                (
+                    "Measured Energy (mJ)",
+                    (
+                        "Measured Energy (mJ)",
+                        "Measured Energy(mJ)",
+                        "Targeted Measured Energy (mJ)",
+                        "Targeted Measured Energy(mJ)",
+                        "Measured Energy Mean(mJ)",
+                    ),
+                ),
+                ("Fluence (J/cm^2)", ("Fluence (J/cm^2)", "Fluence")),
             ],
         ),
         (
-            "Ablation",
+            "RHEED Adjustment",
             [
-                "Pre-Ablation Pulses (count)",
-                "Ablation Temperature (\N{DEGREE SIGN}C)",
-                "Ablation Pressure (mTorr)",
-                "Ablation Atmosphere Gas",
-                "Ablation Frequency (Hz)",
-                "Ablation Pulses (count)",
+                ("Tilt (deg)", ("Tilt (deg)", "Tilt", "Tile")),
+                ("Azimuth (deg)", ("Azimuth (deg)", "Azimuth")),
             ],
         ),
     ]
 
 
-def _render_target_sections(target_data: Dict[str, Any]) -> str:
-    """Render grouped target tables by form section for HTML output."""
-    sections: List[str] = []
-    used_keys: set[str] = set()
+def _preparation_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
+    """Return section definitions for the Preparation card (shared across targets)."""
+    return [
+        (
+            "Pre-Annealing",
+            [
+                (
+                    "Heat Rate (\N{DEGREE SIGN}C/min)",
+                    (
+                        "Pre-Annealing Heat Rate (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Heating Speed (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing-Heating-Speed(\N{DEGREE SIGN}C/min)",
+                    ),
+                ),
+                (
+                    "Anneal Temperature (\N{DEGREE SIGN}C)",
+                    (
+                        "Pre-Annealing Temperature (\N{DEGREE SIGN}C)",
+                        "Pre-Annealing-Temperature(\N{DEGREE SIGN}C)",
+                        "Pre-Annealing Temperature (degC)",
+                    ),
+                ),
+                (
+                    "Hold Time (min)",
+                    (
+                        "Pre-Annealing Hold Time (min)",
+                        "Pre-Annealing Time (min)",
+                        "Pre-Annealing-Time(min)",
+                        "Pre-Annealing-Time",
+                    ),
+                ),
+                (
+                    "Pressure (mbar)",
+                    ("Pre-Annealing Pressure (mbar)",),
+                ),
+                (
+                    "Pressure (mTorr)",
+                    (
+                        "Pre-Annealing Pressure (mTorr)",
+                        "Pre-Annealing Atmosphere Pressure (mTorr)",
+                        "Pre-Annealing-Atmosphere-Pressure(mTorr)",
+                    ),
+                ),
+            ],
+        ),
+        (
+            "Growth Condition",
+            [
+                (
+                    "Heating Rate (\N{DEGREE SIGN}C/min)",
+                    (
+                        "Growth Condition Heating Rate (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Heating Rate (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Cool/Heat Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
+                        "Pre-Annealing Cooling Rate to Growth Temp (\N{DEGREE SIGN}C/min)",
+                    ),
+                ),
+                (
+                    "Temperature (\N{DEGREE SIGN}C)",
+                    (
+                        "Ablation Temperature (\N{DEGREE SIGN}C)",
+                        "Ablation-Temperature(\N{DEGREE SIGN}C)",
+                        "Ablation Temperature (degC)",
+                        "Pre-Annealing Growth Temperature (\N{DEGREE SIGN}C)",
+                        "Pre-Annealing Growth Temperature (degC)",
+                        "Growth Temperature (\N{DEGREE SIGN}C)",
+                        "Growth Temperature (degC)",
+                    ),
+                ),
+                (
+                    "Atmosphere Gas",
+                    ("Ablation Atmosphere Gas", "Ablation-Atmosphere Gas"),
+                ),
+                (
+                    "Pressure (mbar)",
+                    ("Growth Pressure (mbar)", "Ablation Pressure (mbar)"),
+                ),
+                (
+                    "Pressure (mTorr)",
+                    ("Growth Pressure (mTorr)", "Ablation Pressure (mTorr)", "Ablation-Pressure(mTorr)"),
+                ),
+            ],
+        ),
+        (
+            "Cool Down",
+            [
+                (
+                    "Cooling Rate (\N{DEGREE SIGN}C/min)",
+                    (
+                        "Post-Annealing Cooling Rate (\N{DEGREE SIGN}C/min)",
+                        "Post-Annealing Cool Rate (\N{DEGREE SIGN}C/min)",
+                    ),
+                ),
+                (
+                    "Pressure (mbar)",
+                    ("Post-Annealing Pressure (mbar)",),
+                ),
+                (
+                    "Pressure (mTorr)",
+                    (
+                        "Post-Annealing Pressure (mTorr)",
+                        "Post-Annealing Atmosphere Pressure (mTorr)",
+                        "Post-Annealing-Atmosphere-Pressure(mTorr)",
+                    ),
+                ),
+            ],
+        ),
+    ]
 
-    for section_title, section_keys in _target_section_spec():
-        rows = [[key, target_data[key]] for key in section_keys if key in target_data]
+
+def _deposition_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
+    """Return section definitions for per-target Deposition cards."""
+    return [
+        (
+            "Pre-Ablation",
+            [
+                (
+                    "Frequency (Hz)",
+                    ("Pre-Ablation Frequency (Hz)", "Pre-Ablation-Frequency(Hz)"),
+                ),
+                (
+                    "Pulses (count)",
+                    ("Pre-Ablation Pulses (count)", "Pre-Ablation-Pulses"),
+                ),
+            ],
+        ),
+        (
+            "Ablation",
+            [
+                ("Frequency (Hz)", ("Ablation Frequency (Hz)", "Ablation-Frequency(Hz)")),
+                ("Pulses (count)", ("Ablation Pulses (count)", "Ablation-Pulses")),
+            ],
+        ),
+    ]
+
+
+def _first_present_key(data: Dict[str, Any], keys: Tuple[str, ...]) -> str | None:
+    """Return the first matching key present in one target dictionary."""
+    for key in keys:
+        if key in data:
+            return key
+    return None
+
+
+def _render_sections(
+    target_data: Dict[str, Any],
+    spec: List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]],
+) -> str:
+    """Render grouped sub-section tables from target data using the given spec."""
+    sections: List[str] = []
+
+    for section_title, section_rows in spec:
+        rows: List[List[Any]] = []
+        for display_name, candidate_keys in section_rows:
+            present_key = _first_present_key(target_data, candidate_keys)
+            if present_key is None:
+                continue
+            rows.append([display_name, target_data[present_key]])
         if not rows:
             continue
-        used_keys.update(key for key in section_keys if key in target_data)
         table_markup = _render_html_table(["parameter", "value"], rows)
         sections.append(
             "<section class='subcard'>"
@@ -239,64 +383,14 @@ def _render_target_sections(target_data: Dict[str, Any]) -> str:
             "</section>"
         )
 
-    remaining_rows = [[key, value] for key, value in target_data.items() if key not in used_keys]
-    if remaining_rows:
-        table_markup = _render_html_table(["parameter", "value"], remaining_rows)
-        sections.append(
-            "<section class='subcard'>"
-            "<h3>Other</h3>"
-            f"{table_markup}"
-            "</section>"
-        )
-
     return "".join(sections)
 
 
 def write_html_report(file_path: str, data: Any) -> None:
-    """Write form data to a styled HTML report for OneNote import."""
+    """Write form data to a styled HTML report matching the form UI layout."""
     cards: List[str] = []
-    if isinstance(data, dict):
-        header_data = data.get("header")
-        if isinstance(header_data, dict):
-            headers, rows = _to_table_rows(header_data)
-            cards.append(
-                "<section class='card'>"
-                "<h2>Header</h2>"
-                f"{_render_html_table(headers, rows)}"
-                "</section>"
-            )
 
-        target_keys = [key for key in data.keys() if key.lower().startswith("target_")]
-        target_keys.sort(key=lambda key: int(key.split("_")[1]) if key.split("_")[1].isdigit() else key)
-        for target_key in target_keys:
-            target_data = data.get(target_key)
-            if not isinstance(target_data, dict):
-                headers, rows = _to_table_rows(target_data)
-                target_markup = _render_html_table(headers, rows)
-            else:
-                target_markup = f"<div class='section-grid'>{_render_target_sections(target_data)}</div>"
-
-            cards.append(
-                "<section class='card'>"
-                f"<h2>{html.escape(target_key.replace('_', ' ').title())}</h2>"
-                f"{target_markup}"
-                "</section>"
-            )
-
-        other_sections = [
-            (key, value)
-            for key, value in data.items()
-            if key != "header" and key not in target_keys
-        ]
-        for section_name, section_data in other_sections:
-            headers, rows = _to_table_rows(section_data)
-            cards.append(
-                "<section class='card'>"
-                f"<h2>{html.escape(str(section_name))}</h2>"
-                f"{_render_html_table(headers, rows)}"
-                "</section>"
-            )
-    else:
+    if not isinstance(data, dict):
         headers, rows = _to_table_rows(data)
         cards.append(
             "<section class='card'>"
@@ -304,6 +398,77 @@ def write_html_report(file_path: str, data: Any) -> None:
             f"{_render_html_table(headers, rows)}"
             "</section>"
         )
+        _write_html_document(file_path, cards)
+        return
+
+    header_data = data.get("header")
+
+    # 1. Header card
+    if isinstance(header_data, dict):
+        headers, rows = _to_table_rows(header_data)
+        cards.append(
+            "<section class='card'>"
+            "<h2>Header</h2>"
+            f"{_render_html_table(headers, rows)}"
+            "</section>"
+        )
+
+    # Sort target keys
+    target_keys = [key for key in data.keys() if key.lower().startswith("target_")]
+    target_keys.sort(key=lambda key: int(key.split("_")[1]) if key.split("_")[1].isdigit() else key)
+
+    if target_keys:
+        first_target = data[target_keys[0]]
+
+        # 2. Instrument card (shared — read from first target)
+        if isinstance(first_target, dict):
+            instrument_html = _render_sections(first_target, _instrument_spec())
+            if instrument_html:
+                cards.append(
+                    "<section class='card'>"
+                    "<h2>Instrument</h2>"
+                    f"<div class='section-grid'>{instrument_html}</div>"
+                    "</section>"
+                )
+
+        # 3. Preparation card (shared — read from first target)
+        if isinstance(first_target, dict):
+            prep_html = _render_sections(first_target, _preparation_spec())
+            if prep_html:
+                cards.append(
+                    "<section class='card'>"
+                    "<h2>Preparation</h2>"
+                    f"<div class='section-grid'>{prep_html}</div>"
+                    "</section>"
+                )
+
+        # 4. Deposition cards (one per target)
+        for target_key in target_keys:
+            target_data = data.get(target_key)
+            if not isinstance(target_data, dict):
+                continue
+            # Show target material in the card title when available
+            material = target_data.get("Target Material", "")
+            title = f"Deposition - {material}" if material else f"Deposition - {target_key.replace('_', ' ').title()}"
+            depo_html = _render_sections(target_data, _deposition_spec())
+            if depo_html:
+                cards.append(
+                    "<section class='card'>"
+                    f"<h2>{html.escape(title)}</h2>"
+                    f"<div class='section-grid'>{depo_html}</div>"
+                    "</section>"
+                )
+
+    # 5. Notes card
+    if isinstance(header_data, dict):
+        notes = str(header_data.get("Notes", "")).strip()
+        if notes:
+            cards.append(
+                "<section class='card'>"
+                "<h2>Notes</h2>"
+                f"{_render_html_table(['Notes'], [[notes]])}"
+                "</section>"
+            )
 
     page_title = "PLD Growth Parameters"
     now_stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -315,20 +480,28 @@ def write_html_report(file_path: str, data: Any) -> None:
   <title>{html.escape(page_title)}</title>
   <style>
     :root {{
-      --bg: #f4f7fb;
-      --card: #ffffff;
-      --line: #d8e1ec;
+      --bg: #edf3f8;
+      --bg-soft: #f9fbfd;
+      --card: rgba(255, 255, 255, 0.96);
+      --line: #d6dfe9;
       --text: #182230;
       --muted: #526178;
-      --head: #ebf2f9;
+      --head: #eaf1f7;
+      --accent: #295979;
+      --accent-soft: #f4f8fb;
+      --shadow: 0 14px 32px rgba(24, 34, 48, 0.08);
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       padding: 24px;
-      background: var(--bg);
+      background: linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 100%);
       color: var(--text);
       font-family: "Segoe UI", Calibri, Arial, sans-serif;
+    }}
+    main {{
+      max-width: 1500px;
+      margin: 0 auto;
     }}
     h1 {{
       margin: 0 0 6px 0;
@@ -348,13 +521,15 @@ def write_html_report(file_path: str, data: Any) -> None:
     .card {{
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 12px;
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(6px);
     }}
     .card h2 {{
       margin: 0 0 10px 0;
       font-size: 18px;
-      color: #243955;
+      color: var(--accent);
     }}
     .section-grid {{
       display: grid;
@@ -363,14 +538,14 @@ def write_html_report(file_path: str, data: Any) -> None:
     }}
     .subcard {{
       border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 8px;
-      background: #fbfdff;
+      border-radius: 10px;
+      padding: 10px;
+      background: var(--accent-soft);
     }}
     .subcard h3 {{
       margin: 0 0 8px 0;
       font-size: 14px;
-      color: #2d4b72;
+      color: var(--accent);
       letter-spacing: 0.2px;
     }}
     table {{

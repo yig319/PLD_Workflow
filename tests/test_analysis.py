@@ -8,7 +8,7 @@ pytest.importorskip("pandas")
 
 
 def test_list_available_parameters_finds_target_parameters():
-    sample_root = Path(__file__).resolve().parents[1] / "notebooks" / "sample_data"
+    sample_root = Path(__file__).resolve().parents[1] / "notebooks" / "sample_data" / "sample_record.json"
 
     summary = list_available_parameters([sample_root])
 
@@ -17,7 +17,7 @@ def test_list_available_parameters_finds_target_parameters():
 
 
 def test_build_parameter_trend_returns_numeric_values():
-    sample_root = Path(__file__).resolve().parents[1] / "notebooks" / "sample_data"
+    sample_root = Path(__file__).resolve().parents[1] / "notebooks" / "sample_data" / "sample_record.json"
 
     trend = build_parameter_trend([sample_root], parameter="Laser Energy (mJ)", section="target_1")
 

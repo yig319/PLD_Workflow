@@ -8,7 +8,7 @@ SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from pld_workflow.analysis_app import main
+from pld_workflow.apps.parameter_trend_analyzer import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

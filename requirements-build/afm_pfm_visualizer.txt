@@ -1,0 +1,6 @@
+# Minimal third-party packages for building the AFM/PFM visualizer executable.
+# The local project source is loaded from ./src by scripts/build_windows_exe.py.
+PyQt5>=5.15.6,<6
+matplotlib>=3.5
+AFM-tools>=2.1.0
+pyinstaller>=6.0

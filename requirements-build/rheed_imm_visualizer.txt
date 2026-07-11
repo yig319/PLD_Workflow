@@ -1,0 +1,5 @@
+# Minimal third-party packages for building the RHEED IMM visualizer executable.
+# The local project source is loaded from ./src by scripts/build_windows_exe.py.
+PyQt5>=5.15.6,<6
+numpy>=1.21
+pyinstaller>=6.0

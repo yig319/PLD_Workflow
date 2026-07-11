@@ -9,6 +9,7 @@ Desktop workflow tools for PLD parameter capture and raw-data visualization.
 
    intro
    usage
+   building
    release
    modules
 

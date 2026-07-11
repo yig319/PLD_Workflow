@@ -125,6 +125,15 @@ def plot_parameter_trend(trend_frame, value_column: str = "numeric_value", ax=No
     return ax
 
 
+def PlotParameter(paths, parameter, section="target_1"):
+    """Legacy-style helper that builds and plots one parameter trend."""
+
+    trend = build_parameter_trend(paths, parameter=parameter, section=section)
+    if not trend.empty:
+        plot_parameter_trend(trend)
+    return trend
+
+
 def _record_to_rows(record_path: Path) -> list[dict[str, Any]]:
     """Normalize one nested JSON record into long-form analysis rows."""
     with open(record_path, "r", encoding="utf-8") as handle:

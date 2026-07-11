@@ -18,6 +18,7 @@ APP_CONFIG = {
             "PyQt5>=5.15.6,<6",
             "pyinstaller>=6.0",
         ],
+        "exclude_modules": [],
         "pyinstaller_args": [],
     },
     "plume_manager": {
@@ -26,9 +27,32 @@ APP_CONFIG = {
         "dependencies": [
             "PyQt5>=5.15.6,<6",
             "h5py",
-            "matplotlib>=3.5",
             "numpy>=1.21",
+            "pillow>=8",
             "pyinstaller>=6.0",
+        ],
+        "exclude_modules": [
+            "IPython",
+            "_tkinter",
+            "babel",
+            "black",
+            "docutils",
+            "ipykernel",
+            "jedi",
+            "jsonschema",
+            "jupyter_client",
+            "jupyter_core",
+            "matplotlib",
+            "mpl_toolkits",
+            "nbformat",
+            "parso",
+            "py",
+            "pygments",
+            "pytest",
+            "sphinx",
+            "tkinter",
+            "traitlets",
+            "zmq",
         ],
         "pyinstaller_args": [],
     },
@@ -42,6 +66,7 @@ APP_CONFIG = {
             "xrayutilities",
             "pyinstaller>=6.0",
         ],
+        "exclude_modules": [],
         "pyinstaller_args": [
             "--collect-all",
             "xrd_utils",
@@ -57,9 +82,10 @@ APP_CONFIG = {
         "dependencies": [
             "PyQt5>=5.15.6,<6",
             "matplotlib>=3.5",
-            "AFM-tools",
+            "AFM-tools>=2.1.0",
             "pyinstaller>=6.0",
         ],
+        "exclude_modules": [],
         "pyinstaller_args": [
             "--collect-all",
             "afm_tools",
@@ -75,6 +101,7 @@ APP_CONFIG = {
             "numpy>=1.21",
             "pyinstaller>=6.0",
         ],
+        "exclude_modules": [],
         "pyinstaller_args": [],
     },
 }
@@ -85,6 +112,12 @@ APP_ALIASES = {
     "visualizer": "xrd_visualizer",
     "afm_visualizer": "afm_pfm_visualizer",
 }
+
+QT_BINDING_EXCLUDES = [
+    "PyQt6",
+    "PySide2",
+    "PySide6",
+]
 
 
 def run_step(description: str, args: list[str], cwd: Path) -> None:
@@ -138,9 +171,10 @@ def clean_legacy_repo_artifacts(repo_root: Path, exe_name: str, onefile: bool) -
     dist_dir = repo_root / "dist"
     dist_dir.mkdir(exist_ok=True)
 
-    targets = [dist_dir / exe_name]
     if onefile:
-        targets.append(dist_dir / f"{exe_name}.exe")
+        targets = [dist_dir / f"{exe_name}.exe"]
+    else:
+        targets = [dist_dir / exe_name]
 
     for target in targets:
         ensure_clean_output(target)
@@ -193,6 +227,10 @@ def main() -> int:
             str(spec_path),
             str(entry_point),
         ]
+        for module_name in QT_BINDING_EXCLUDES:
+            pyinstaller_args.extend(["--exclude-module", module_name])
+        for module_name in config.get("exclude_modules", []):
+            pyinstaller_args.extend(["--exclude-module", module_name])
         pyinstaller_args.extend(config.get("pyinstaller_args", []))
         if args.onefile:
             pyinstaller_args.append("--onefile")

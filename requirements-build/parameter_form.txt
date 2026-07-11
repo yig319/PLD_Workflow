@@ -1,0 +1,4 @@
+# Minimal third-party packages for building the parameter form executable.
+# The local project source is loaded from ./src by scripts/build_windows_exe.py.
+PyQt5>=5.15.6,<6
+pyinstaller>=6.0

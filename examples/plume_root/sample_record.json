@@ -1,0 +1,30 @@
+{
+  "header": {
+    "Chamber": "PLD-1",
+    "Cool Down Atmosphere": "Oxygen",
+    "Date": "04/02/2026",
+    "Growth ID": "Growth1",
+    "Notes": "Sample metadata for notebook testing.",
+    "Path": "C:/data/pld",
+    "Substrate": "SrTiO3 (Strontium Titanate)",
+    "Substrate Size": "5 cm * 5 cm",
+    "User Name": "Person1",
+    "time": "10:15:00"
+  },
+  "target_1": {
+    "Ablation Atmosphere Gas": "Oxygen",
+    "Ablation Frequency (Hz)": 5.0,
+    "Ablation Pressure (mTorr)": 120.0,
+    "Ablation Pulses (count)": 2400.0,
+    "Ablation Temperature (degC)": 680.0,
+    "Fluence (J/cm^2)": 1.8,
+    "Laser Energy (mJ)": 245.0,
+    "Laser Voltage (kV)": 21.0,
+    "Offset X (mm)": 1.2,
+    "Offset Y (mm)": 0.0,
+    "Scan Diameter (mm)": 18.0,
+    "Scan Speed X/Z (mm/s)": 2.5,
+    "Target Material": "SrRuO3",
+    "Targeted Measured Energy (mJ)": 238.0
+  }
+}

@@ -11,7 +11,7 @@ SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from pld_workflow.parameter_form_app import main
+from pld_workflow.apps.parameter_form import main
 
 
 if __name__ == "__main__":
