@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -258,7 +260,7 @@ class GenerateForm(QWidget):
 
         self.notes_input = QPlainTextEdit()
         self.notes_input.setMinimumHeight(self.window_height * 2)
-        self.notes_input.setMaximumHeight(self.window_height * 7)
+        self.notes_input.setMaximumHeight(self.window_height * 3)
         self.notes_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self._init_target_storage()
@@ -340,6 +342,8 @@ class GenerateForm(QWidget):
         self.button_save.setFixedHeight(self.button_height + 6)
         self.button_save.clicked.connect(self.save)
 
+        self.setAcceptDrops(True)
+
         top_panel = QWidget()
         top_panel.setProperty("role", "top-panel")
         top_panel_layout = QGridLayout()
@@ -390,9 +394,15 @@ class GenerateForm(QWidget):
         self.target_material_stack = QStackedWidget(self)
         self.Stack = QStackedWidget(self)
 
+        self.status_box = QGroupBox("Status")
+        status_box_layout = QVBoxLayout()
+        status_box_layout.setContentsMargins(8, 8, 8, 8)
+        self.status_box.setLayout(status_box_layout)
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         self.status_label.setProperty("role", "section-note")
+        status_box_layout.addWidget(self.status_label)
+        status_box_layout.addStretch()
 
     @staticmethod
     def _area_row(width_widget: QLineEdit, height_widget: QLineEdit, area_widget: QLineEdit) -> QWidget:
@@ -499,8 +509,8 @@ class GenerateForm(QWidget):
             self.form_notes.setParent(None)
         if self.cool_down_gas.parentWidget() is not None:
             self.cool_down_gas.setParent(None)
-        if self.status_label.parentWidget() is not None:
-            self.status_label.setParent(None)
+        if self.status_box.parentWidget() is not None:
+            self.status_box.setParent(None)
 
         if self.shared_container is not None:
             self.toplayout.removeWidget(self.shared_container)
@@ -656,8 +666,10 @@ class GenerateForm(QWidget):
         process_grid.setColumnStretch(1, 1)
         body_layout.addWidget(process_group)
         body_layout.addWidget(deposition_group)
-        body_layout.addWidget(self.form_notes)
-        body_layout.addWidget(self.status_label)
+        notes_row = QHBoxLayout()
+        notes_row.addWidget(self.form_notes, 2)
+        notes_row.addWidget(self.status_box, 1)
+        body_layout.addLayout(notes_row)
         body_layout.addStretch(1)
 
     def stackUI(self, create_index: int) -> QVBoxLayout:
@@ -1111,6 +1123,27 @@ class GenerateForm(QWidget):
                 self._first_present_value(target_dict, "Ablation Pulses (count)", "Ablation-Pulses"),
             )
 
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        for url in event.mimeData().urls():
+            file_path = url.toLocalFile()
+            if file_path.lower().endswith(".json"):
+                self._load_json_file(file_path)
+                break
+
+    def _load_json_file(self, file_path: str) -> None:
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                info_dict = json.load(file)
+        except (OSError, json.JSONDecodeError) as exc:
+            self.status_label.setText(f"Failed to load JSON: {exc}")
+            return
+        self._apply_info_dict(info_dict, source_path=file_path)
+        self.status_label.setText("Parameters loaded!")
+
     def load(self) -> None:
         """Load a saved JSON file and populate the form fields."""
         start_dir = self.save_path_input.text().strip() or os.getcwd()
@@ -1123,15 +1156,7 @@ class GenerateForm(QWidget):
         if not file_path:
             return
 
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                info_dict = json.load(file)
-        except (OSError, json.JSONDecodeError) as exc:
-            self.status_label.setText(f"Failed to load JSON: {exc}")
-            return
-
-        self._apply_info_dict(info_dict, source_path=file_path)
-        self.status_label.setText("Parameters loaded!")
+        self._load_json_file(file_path)
 
     def get_info(self) -> Dict[str, Dict[str, Any]]:
         """Collect all non-empty form values into a nested dictionary."""
