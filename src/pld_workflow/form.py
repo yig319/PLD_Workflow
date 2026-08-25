@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 from PyQt5.QtWidgets import (
     QComboBox,
@@ -20,18 +20,22 @@ from PyQt5.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from .parameter_export import build_default_file_stem, save_parameters_json_and_html
+from .pulse_tracking import MAX_PULSE_COUNT, calculate_run_pulses, find_target_pulse_history, parse_record_timestamp
 
 
 def resolve_header_timestamp(
@@ -83,6 +87,18 @@ class GenerateForm(QWidget):
         """Create a line edit used by target-page fields."""
         return QLineEdit()
 
+    def _new_pulse_spinbox(self, *, read_only: bool = False) -> QSpinBox:
+        """Create an integer pulse editor with stable large-count behavior."""
+        spinbox = QSpinBox()
+        spinbox.setRange(0, MAX_PULSE_COUNT)
+        spinbox.setGroupSeparatorShown(True)
+        spinbox.setReadOnly(read_only)
+        spinbox.setButtonSymbols(QSpinBox.NoButtons)
+        spinbox.setMinimumWidth(120)
+        if read_only:
+            spinbox.setProperty("calculated", True)
+        return spinbox
+
     def _new_gas_combo(self) -> QComboBox:
         """Create an editable gas combo box with common options."""
         combo = QComboBox()
@@ -118,6 +134,7 @@ class GenerateForm(QWidget):
     def _init_target_storage(self) -> None:
         """Initialize parallel lists storing per-target widgets."""
         self.target_input: List[QLineEdit] = []
+        self.target_id_input: List[QLineEdit] = []
 
         self.offset_x_input: List[QLineEdit] = []
         self.offset_y_input: List[QLineEdit] = []
@@ -144,7 +161,7 @@ class GenerateForm(QWidget):
         self.spot_area_input: List[QLineEdit] = []
         self.magnification_input: List[QLineEdit] = []
 
-        self.pre_number_pulses_input: List[QLineEdit] = []
+        self.pre_number_pulses_input: List[QSpinBox] = []
         self.pre_frequency_input: List[QLineEdit] = []
         self.pre_annealing_temperature_input: List[QLineEdit] = []
         self.pre_annealing_heating_speed_input: List[QLineEdit] = []
@@ -164,11 +181,22 @@ class GenerateForm(QWidget):
         self.temperature_input: List[QLineEdit] = []
         self.gas_input: List[QComboBox] = []
         self.frequency_input: List[QLineEdit] = []
-        self.number_pulses_input: List[QLineEdit] = []
+        self.number_pulses_input: List[QSpinBox] = []
+        self.additional_on_target_pulses_input: List[QSpinBox] = []
+        self.off_target_pulses_input: List[QSpinBox] = []
+        self.target_pulses_before_input: List[QSpinBox] = []
+        self.on_target_pulses_this_run_output: List[QSpinBox] = []
+        self.target_pulses_after_output: List[QSpinBox] = []
+        self.all_laser_pulses_this_run_output: List[QSpinBox] = []
+        self.pulse_history_source_label: List[QLabel] = []
+        self.pulse_correction_label: List[QLabel] = []
+        self.pulse_correction_reason: List[str] = []
+        self.pulse_history_ready: List[bool] = []
 
     def _append_target_fields(self) -> int:
         """Append one set of target-page widgets and return its index."""
         self.target_input.append(self._new_line_edit())
+        self.target_id_input.append(self._new_line_edit())
 
         self.offset_x_input.append(self._new_line_edit())
         self.offset_y_input.append(self._new_line_edit())
@@ -195,7 +223,7 @@ class GenerateForm(QWidget):
         self.spot_area_input.append(self._new_line_edit())
         self.magnification_input.append(self._new_line_edit())
 
-        self.pre_number_pulses_input.append(self._new_line_edit())
+        self.pre_number_pulses_input.append(self._new_pulse_spinbox())
         self.pre_frequency_input.append(self._new_line_edit())
         self.pre_annealing_temperature_input.append(self._new_line_edit())
         self.pre_annealing_heating_speed_input.append(self._new_line_edit())
@@ -215,9 +243,38 @@ class GenerateForm(QWidget):
         self.temperature_input.append(self._new_line_edit())
         self.gas_input.append(self._new_gas_combo())
         self.frequency_input.append(self._new_line_edit())
-        self.number_pulses_input.append(self._new_line_edit())
+        self.number_pulses_input.append(self._new_pulse_spinbox())
+        self.additional_on_target_pulses_input.append(self._new_pulse_spinbox())
+        self.off_target_pulses_input.append(self._new_pulse_spinbox())
+        self.target_pulses_before_input.append(self._new_pulse_spinbox(read_only=True))
+        self.on_target_pulses_this_run_output.append(self._new_pulse_spinbox(read_only=True))
+        self.target_pulses_after_output.append(self._new_pulse_spinbox(read_only=True))
+        self.all_laser_pulses_this_run_output.append(self._new_pulse_spinbox(read_only=True))
 
-        return len(self.target_input) - 1
+        source_label = QLabel("History not loaded")
+        source_label.setWordWrap(True)
+        source_label.setProperty("role", "section-note")
+        self.pulse_history_source_label.append(source_label)
+
+        correction_label = QLabel("")
+        correction_label.setWordWrap(True)
+        correction_label.setProperty("statusLevel", "warning")
+        correction_label.hide()
+        self.pulse_correction_label.append(correction_label)
+        self.pulse_correction_reason.append("")
+        self.pulse_history_ready.append(False)
+
+        index = len(self.target_input) - 1
+        for widget in (
+            self.pre_number_pulses_input[index],
+            self.number_pulses_input[index],
+            self.additional_on_target_pulses_input[index],
+            self.off_target_pulses_input[index],
+            self.target_pulses_before_input[index],
+        ):
+            widget.valueChanged.connect(lambda _value, target_index=index: self._recalculate_target_pulses(target_index))
+
+        return index
 
     def _init_inputs(self) -> None:
         """Create and prefill all input controls used by the form."""
@@ -263,6 +320,10 @@ class GenerateForm(QWidget):
         self.notes_input.setMaximumHeight(self.window_height * 3)
         self.notes_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
+        self._status_timer = QTimer(self)
+        self._status_timer.setSingleShot(True)
+        self._status_timer.timeout.connect(self._clear_transient_status)
+
         self._init_target_storage()
 
     def _init_layout(self) -> None:
@@ -297,6 +358,17 @@ class GenerateForm(QWidget):
                 border-radius: 7px;
                 padding: 4px 6px;
             }
+            QSpinBox {
+                background: #ffffff;
+                border: 1px solid #c8d3df;
+                border-radius: 7px;
+                padding: 4px 6px;
+            }
+            QSpinBox[calculated="true"] {
+                background: #edf3f8;
+                color: #173a52;
+                font-weight: 600;
+            }
             QPushButton {
                 background: #e7eef6;
                 border: 1px solid #c7d2df;
@@ -311,6 +383,34 @@ class GenerateForm(QWidget):
             }
             QLabel[role="section-note"] {
                 color: #5a6e85;
+            }
+            QLabel[statusLevel="success"] {
+                background: #e7f5ed;
+                color: #205c3a;
+                border: 1px solid #a8d5bb;
+                border-radius: 6px;
+                padding: 7px;
+            }
+            QLabel[statusLevel="info"] {
+                background: #eaf2f8;
+                color: #234e6b;
+                border: 1px solid #b8cfdf;
+                border-radius: 6px;
+                padding: 7px;
+            }
+            QLabel[statusLevel="warning"] {
+                background: #fff5d9;
+                color: #704e00;
+                border: 1px solid #e6c76c;
+                border-radius: 6px;
+                padding: 7px;
+            }
+            QLabel[statusLevel="error"] {
+                background: #fdeaea;
+                color: #7a2424;
+                border: 1px solid #e0aaaa;
+                border-radius: 6px;
+                padding: 7px;
             }
             """
         )
@@ -329,13 +429,21 @@ class GenerateForm(QWidget):
         self.button_add_target.clicked.connect(self.add_target)
 
         self.button_load = QPushButton(self)
-        self.button_load.setText("Load JSON")
-        self.button_load.setProperty("role", "primary")
+        self.button_load.setText("Open JSON")
         self.button_load.setFixedHeight(self.button_height + 6)
         self.button_load.setToolTip(
             "Load a template or saved JSON file. Missing Date and Time values default to the current timestamp."
         )
         self.button_load.clicked.connect(self.load)
+
+        self.button_template = QPushButton(self)
+        self.button_template.setText("Use as Template")
+        self.button_template.setProperty("role", "primary")
+        self.button_template.setFixedHeight(self.button_height + 6)
+        self.button_template.setToolTip(
+            "Copy reusable parameters from JSON, start a new timestamp, and clear run-specific pulse values."
+        )
+        self.button_template.clicked.connect(self.load_template)
 
         self.button_save = QPushButton(self)
         self.button_save.setText("Save Parameters")
@@ -359,6 +467,7 @@ class GenerateForm(QWidget):
         top_actions_layout.setSpacing(8)
         top_actions.setLayout(top_actions_layout)
         top_actions_layout.addWidget(self.button_load)
+        top_actions_layout.addWidget(self.button_template)
         top_actions_layout.addWidget(self.button_save)
         top_actions_layout.addStretch(1)
 
@@ -394,15 +503,20 @@ class GenerateForm(QWidget):
         self.target_material_stack = QStackedWidget(self)
         self.Stack = QStackedWidget(self)
 
-        self.status_box = QGroupBox("Status")
+        self.status_box = QGroupBox("Latest Activity")
+        self.status_box.setMaximumHeight(92)
         status_box_layout = QVBoxLayout()
         status_box_layout.setContentsMargins(8, 8, 8, 8)
         self.status_box.setLayout(status_box_layout)
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.status_label.setProperty("role", "section-note")
+        self.status_label.setProperty("statusLevel", "info")
+        self.status_label.hide()
         status_box_layout.addWidget(self.status_label)
-        status_box_layout.addStretch()
+        self.status_hint_label = QLabel("New messages include a timestamp. Success messages clear automatically.")
+        self.status_hint_label.setWordWrap(True)
+        self.status_hint_label.setProperty("role", "section-note")
+        status_box_layout.addWidget(self.status_hint_label)
 
     @staticmethod
     def _area_row(width_widget: QLineEdit, height_widget: QLineEdit, area_widget: QLineEdit) -> QWidget:
@@ -528,6 +642,8 @@ class GenerateForm(QWidget):
         shared_layout.setContentsMargins(0, 0, 0, 0)
         self.shared_container.setLayout(shared_layout)
         self.toplayout.addWidget(self.shared_container)
+
+        shared_layout.addWidget(self.status_box)
 
         page_scroll = QScrollArea()
         page_scroll.setWidgetResizable(True)
@@ -666,10 +782,7 @@ class GenerateForm(QWidget):
         process_grid.setColumnStretch(1, 1)
         body_layout.addWidget(process_group)
         body_layout.addWidget(deposition_group)
-        notes_row = QHBoxLayout()
-        notes_row.addWidget(self.form_notes, 2)
-        notes_row.addWidget(self.status_box, 1)
-        body_layout.addLayout(notes_row)
+        body_layout.addWidget(self.form_notes)
         body_layout.addStretch(1)
 
     def stackUI(self, create_index: int) -> QVBoxLayout:
@@ -732,14 +845,65 @@ class GenerateForm(QWidget):
         layout_ablation.addRow(QLabel("Frequency (Hz)"), self.frequency_input[create_index])
         layout_ablation.addRow(QLabel("Pulses (count)"), self.number_pulses_input[create_index])
 
-        for form in (form_laser, form_growth_temp, form_atmosphere, form_pre_ablation, form_ablation):
+        form_pulse_tracking = QGroupBox("Pulse Tracking")
+        pulse_tracking_layout = QGridLayout()
+        pulse_tracking_layout.setContentsMargins(10, 8, 10, 10)
+        pulse_tracking_layout.setHorizontalSpacing(8)
+        pulse_tracking_layout.setVerticalSpacing(6)
+        form_pulse_tracking.setLayout(pulse_tracking_layout)
+        before_row = QWidget()
+        before_layout = QHBoxLayout()
+        before_layout.setContentsMargins(0, 0, 0, 0)
+        before_layout.setSpacing(6)
+        before_row.setLayout(before_layout)
+        before_layout.addWidget(self.target_pulses_before_input[create_index], 1)
+        refresh_button = QPushButton("Update History")
+        refresh_button.setToolTip("Find target usage in JSON records earlier than this form's timestamp.")
+        refresh_button.clicked.connect(
+            lambda _checked=False, target_index=create_index: self._update_pulse_history(target_index)
+        )
+        before_layout.addWidget(refresh_button)
+        correct_button = QPushButton("Correct...")
+        correct_button.setToolTip("Manually correct the starting pulse count with verification and a reason.")
+        correct_button.clicked.connect(
+            lambda _checked=False, target_index=create_index: self._correct_starting_pulses(target_index)
+        )
+        before_layout.addWidget(correct_button)
+
+        pulse_tracking_layout.addWidget(QLabel("Before Run (count)"), 0, 0)
+        pulse_tracking_layout.addWidget(before_row, 0, 1, 1, 3)
+        pulse_tracking_layout.addWidget(QLabel("Additional On-Target"), 0, 4)
+        pulse_tracking_layout.addWidget(self.additional_on_target_pulses_input[create_index], 0, 5)
+        pulse_tracking_layout.addWidget(QLabel("Off-Target"), 0, 6)
+        pulse_tracking_layout.addWidget(self.off_target_pulses_input[create_index], 0, 7)
+
+        pulse_tracking_layout.addWidget(QLabel("On-Target This Run"), 1, 0)
+        pulse_tracking_layout.addWidget(self.on_target_pulses_this_run_output[create_index], 1, 1)
+        pulse_tracking_layout.addWidget(QLabel("After Run"), 1, 2)
+        pulse_tracking_layout.addWidget(self.target_pulses_after_output[create_index], 1, 3)
+        pulse_tracking_layout.addWidget(QLabel("All Laser Pulses This Run"), 1, 4)
+        pulse_tracking_layout.addWidget(self.all_laser_pulses_this_run_output[create_index], 1, 5)
+        pulse_tracking_layout.addWidget(self.pulse_history_source_label[create_index], 2, 0, 1, 8)
+        pulse_tracking_layout.addWidget(self.pulse_correction_label[create_index], 3, 0, 1, 8)
+        for column in (1, 3, 5, 7):
+            pulse_tracking_layout.setColumnStretch(column, 1)
+
+        for form in (
+            form_laser,
+            form_growth_temp,
+            form_atmosphere,
+            form_pre_ablation,
+            form_ablation,
+            form_pulse_tracking,
+        ):
             form.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
 
-        deposition_grid.addWidget(form_laser, 0, 0, 1, 2)
-        deposition_grid.addWidget(form_growth_temp, 0, 2)
-        deposition_grid.addWidget(form_atmosphere, 1, 0)
-        deposition_grid.addWidget(form_pre_ablation, 1, 1)
-        deposition_grid.addWidget(form_ablation, 1, 2)
+        deposition_grid.addWidget(form_pulse_tracking, 0, 0, 1, 3)
+        deposition_grid.addWidget(form_laser, 1, 0, 1, 2)
+        deposition_grid.addWidget(form_growth_temp, 1, 2)
+        deposition_grid.addWidget(form_atmosphere, 2, 0)
+        deposition_grid.addWidget(form_pre_ablation, 2, 1)
+        deposition_grid.addWidget(form_ablation, 2, 2)
         deposition_grid.setColumnStretch(0, 1)
         deposition_grid.setColumnStretch(1, 1)
         deposition_grid.setColumnStretch(2, 1)
@@ -755,6 +919,8 @@ class GenerateForm(QWidget):
         target_material_layout.setContentsMargins(0, 0, 0, 0)
         target_material_layout.setSpacing(8)
         target_material_page.setLayout(target_material_layout)
+        target_material_layout.addWidget(QLabel("Target ID"))
+        target_material_layout.addWidget(self.target_id_input[idx])
         target_material_layout.addWidget(QLabel("Target Material"))
         target_material_layout.addWidget(self.target_input[idx])
         self.target_material_stack.addWidget(target_material_page)
@@ -827,6 +993,17 @@ class GenerateForm(QWidget):
         widget.setCurrentText(text)
 
     @staticmethod
+    def _set_spin_value(widget: QSpinBox, value: Any) -> None:
+        """Set an integer spin box from a JSON-compatible value."""
+        if value is None or str(value).strip() == "":
+            widget.setValue(0)
+            return
+        try:
+            widget.setValue(int(float(value)))
+        except (TypeError, ValueError):
+            widget.setValue(0)
+
+    @staticmethod
     def _first_present_value(data: Dict[str, Any], *keys: str) -> Any:
         """Return first existing key value from a mapping, else None."""
         for key in keys:
@@ -834,13 +1011,165 @@ class GenerateForm(QWidget):
                 return data.get(key)
         return None
 
-    def _apply_info_dict(self, info_dict: Dict[str, Dict[str, Any]], source_path: str | None = None) -> None:
-        """Populate form fields from a dictionary loaded from JSON."""
+    def _recalculate_target_pulses(self, index: int) -> None:
+        """Update all derived pulse totals for one target."""
+        if index >= len(self.target_pulses_before_input):
+            return
+        on_target, all_laser = calculate_run_pulses(
+            self.pre_number_pulses_input[index].value(),
+            self.number_pulses_input[index].value(),
+            self.additional_on_target_pulses_input[index].value(),
+            self.off_target_pulses_input[index].value(),
+        )
+        self.on_target_pulses_this_run_output[index].setValue(on_target)
+        self.target_pulses_after_output[index].setValue(
+            self.target_pulses_before_input[index].value() + on_target
+        )
+        self.all_laser_pulses_this_run_output[index].setValue(all_laser)
+
+    def _update_pulse_history(self, index: int) -> None:
+        """Load the active target's starting pulse count from local JSON history."""
+        header = {"Date": self.date_input.text(), "time": self.time_input.text()}
+        timestamp = parse_record_timestamp(header)
+        if timestamp is None:
+            self._show_status(
+                "Enter a valid Date and Time before updating pulse history.",
+                level="error",
+                timeout_ms=0,
+            )
+            return
+
+        self._show_status("Searching earlier JSON records for target pulse history...", level="info", timeout_ms=0)
+        try:
+            result = find_target_pulse_history(
+                [self.save_path_input.text().strip() or os.getcwd()],
+                before_timestamp=timestamp,
+                target_id=self.target_id_input[index].text(),
+                material=self.target_input[index].text(),
+                chamber=self.chamber_ComboBox.currentText(),
+            )
+        except ValueError as exc:
+            self._show_status(str(exc), level="error", timeout_ms=0)
+            return
+
+        self.target_pulses_before_input[index].setValue(result.before_pulses)
+        self.pulse_history_ready[index] = True
+        self.pulse_correction_reason[index] = ""
+        self.pulse_correction_label[index].clear()
+        self.pulse_correction_label[index].hide()
+
+        if result.source_path is None:
+            self.pulse_history_source_label[index].setText(
+                "No earlier matching record found. Starting at 0; verify this is a new target."
+            )
+            self._show_status(
+                "No earlier target history was found. Verify the target before saving.",
+                level="warning",
+                timeout_ms=0,
+            )
+            return
+
+        source_time = result.source_timestamp.strftime("%Y-%m-%d %H:%M:%S") if result.source_timestamp else "unknown"
+        source_name = result.source_growth_id or result.source_path.name
+        source_text = (
+            f"From {source_name} at {source_time} ({result.matching_records} matching record"
+            f"{'s' if result.matching_records != 1 else ''})"
+        )
+        if result.warning:
+            source_text = f"{source_text}. {result.warning}"
+        self.pulse_history_source_label[index].setText(source_text)
+        self._show_status(
+            f"Pulse history updated from {source_name}: {result.before_pulses:,} pulses.",
+            level="warning" if result.warning else "success",
+            timeout_ms=0 if result.warning else 7000,
+        )
+
+    def _correct_starting_pulses(self, index: int) -> None:
+        """Apply a verified manual adjustment to the starting target count."""
+        current_value = self.target_pulses_before_input[index].value()
+        corrected_value, accepted = QInputDialog.getInt(
+            self,
+            "Correct Starting Pulses",
+            "Verified target pulses before this run:",
+            value=current_value,
+            min=0,
+            max=MAX_PULSE_COUNT,
+            step=1,
+        )
+        if not accepted or corrected_value == current_value:
+            return
+
+        delta = corrected_value - current_value
+        answer = QMessageBox.warning(
+            self,
+            "Verify Pulse Correction",
+            "The history value is "
+            f"{current_value:,} pulses and the correction is {corrected_value:,} "
+            f"({delta:+,}). This affects this record and future calculations.\n\n"
+            "Verify the physical target and previous records before continuing.",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        reason, accepted = QInputDialog.getText(
+            self,
+            "Correction Reason",
+            "Reason for the verified correction:",
+        )
+        reason = reason.strip()
+        if not accepted or not reason:
+            self._show_status("Pulse correction cancelled because no reason was entered.", level="warning", timeout_ms=0)
+            return
+
+        self.target_pulses_before_input[index].setValue(corrected_value)
+        self.pulse_history_ready[index] = True
+        self.pulse_correction_reason[index] = reason
+        self.pulse_correction_label[index].setText(f"Manual correction active: {reason}")
+        self.pulse_correction_label[index].show()
+        self.pulse_history_source_label[index].setText(
+            f"Manually corrected from {current_value:,} to {corrected_value:,} pulses"
+        )
+        self._show_status(
+            f"Manual pulse correction applied ({delta:+,}). Verify it again before saving.",
+            level="warning",
+            timeout_ms=0,
+        )
+
+    def _show_status(self, message: str, *, level: str = "info", timeout_ms: int = 7000) -> None:
+        """Show a visibly fresh, timestamped operation message."""
+        self._status_timer.stop()
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        self.status_label.setText(f"{timestamp}  {message}")
+        self.status_label.setProperty("statusLevel", level)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+        self.status_label.show()
+        self.status_hint_label.hide()
+        if timeout_ms > 0:
+            self._status_timer.start(timeout_ms)
+
+    def _clear_transient_status(self) -> None:
+        """Clear an expired status while retaining the status-area explanation."""
+        self.status_label.hide()
+        self.status_hint_label.show()
+
+    def _apply_info_dict(
+        self,
+        info_dict: Dict[str, Dict[str, Any]],
+        source_path: str | None = None,
+        *,
+        as_template: bool = False,
+    ) -> None:
+        """Populate the form from JSON, optionally starting a fresh run."""
         header = info_dict.get("header", {})
         resolved_date, resolved_time = resolve_header_timestamp(header)
+        if as_template:
+            resolved_date, resolved_time = resolve_header_timestamp({}, now=datetime.datetime.now())
         resolved_path = str(Path(source_path).resolve().parent) if source_path else self.save_path_input.text()
 
-        self._set_line_edit_value(self.growth_id_input, header.get("Growth ID"))
+        self._set_line_edit_value(self.growth_id_input, "" if as_template else header.get("Growth ID"))
         self._set_line_edit_value(self.name_input, header.get("User Name"))
         self._set_line_edit_value(self.date_input, resolved_date)
         self._set_line_edit_value(self.time_input, resolved_time)
@@ -850,7 +1179,7 @@ class GenerateForm(QWidget):
             self.cool_down_gas,
             self._first_present_value(header, "Cool Down Atmosphere", "Post-Annealing Atmosphere"),
         )
-        self.notes_input.setPlainText(str(header.get("Notes", "")))
+        self.notes_input.setPlainText("" if as_template else str(header.get("Notes", "")))
 
         substrate = header.get("Substrate")
         if not substrate:
@@ -873,6 +1202,7 @@ class GenerateForm(QWidget):
         for i, key in enumerate(target_keys):
             target_dict = info_dict.get(key, {})
             self._set_line_edit_value(self.target_input[i], target_dict.get("Target Material"))
+            self._set_line_edit_value(self.target_id_input[i], target_dict.get("Target ID"))
 
             self._set_line_edit_value(
                 self.offset_x_input[i],
@@ -966,9 +1296,15 @@ class GenerateForm(QWidget):
                 self._first_present_value(target_dict, "Magnification (x)", "Magnification"),
             )
 
-            self._set_line_edit_value(
+            self._set_spin_value(
                 self.pre_number_pulses_input[i],
-                self._first_present_value(target_dict, "Pre-Ablation Pulses (count)", "Pre-Ablation-Pulses"),
+                0
+                if as_template
+                else self._first_present_value(
+                    target_dict,
+                    "Pre-Ablation Pulses (count)",
+                    "Pre-Ablation-Pulses",
+                ),
             )
             self._set_line_edit_value(
                 self.pre_frequency_input[i],
@@ -1118,10 +1454,43 @@ class GenerateForm(QWidget):
                 self.frequency_input[i],
                 self._first_present_value(target_dict, "Ablation Frequency (Hz)", "Ablation-Frequency(Hz)"),
             )
-            self._set_line_edit_value(
+            self._set_spin_value(
                 self.number_pulses_input[i],
-                self._first_present_value(target_dict, "Ablation Pulses (count)", "Ablation-Pulses"),
+                0
+                if as_template
+                else self._first_present_value(target_dict, "Ablation Pulses (count)", "Ablation-Pulses"),
             )
+
+            self._set_spin_value(
+                self.additional_on_target_pulses_input[i],
+                0
+                if as_template
+                else self._first_present_value(target_dict, "Additional On-Target Pulses (count)"),
+            )
+            self._set_spin_value(
+                self.off_target_pulses_input[i],
+                0 if as_template else self._first_present_value(target_dict, "Off-Target Pulses (count)"),
+            )
+            self._set_spin_value(
+                self.target_pulses_before_input[i],
+                0
+                if as_template
+                else self._first_present_value(target_dict, "Target Pulses Before Run (count)"),
+            )
+            self.pulse_history_ready[i] = not as_template and "Target Pulses Before Run (count)" in target_dict
+            correction_reason = "" if as_template else str(target_dict.get("Pulse Correction Reason", "")).strip()
+            self.pulse_correction_reason[i] = correction_reason
+            if correction_reason:
+                self.pulse_correction_label[i].setText(f"Manual correction active: {correction_reason}")
+                self.pulse_correction_label[i].show()
+            else:
+                self.pulse_correction_label[i].hide()
+            if as_template:
+                self.pulse_history_source_label[i].setText("History not loaded for this new run")
+            else:
+                source_text = str(target_dict.get("Pulse History Source", "")).strip()
+                self.pulse_history_source_label[i].setText(source_text or "Saved record; refresh history before reuse")
+            self._recalculate_target_pulses(i)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
@@ -1134,29 +1503,43 @@ class GenerateForm(QWidget):
                 self._load_json_file(file_path)
                 break
 
-    def _load_json_file(self, file_path: str) -> None:
+    def _load_json_file(self, file_path: str, *, as_template: bool = False) -> None:
         try:
             with open(file_path, "r", encoding="utf-8") as file:
                 info_dict = json.load(file)
         except (OSError, json.JSONDecodeError) as exc:
-            self.status_label.setText(f"Failed to load JSON: {exc}")
+            self._show_status(f"Failed to load JSON: {exc}", level="error", timeout_ms=0)
             return
-        self._apply_info_dict(info_dict, source_path=file_path)
-        self.status_label.setText("Parameters loaded!")
+        self._apply_info_dict(info_dict, source_path=file_path, as_template=as_template)
+        if as_template:
+            self._show_status(
+                "Template loaded. Run-specific pulse values were cleared; update pulse history after verifying the timestamp.",
+                level="warning",
+                timeout_ms=0,
+            )
+        else:
+            self._show_status("Existing parameters loaded.", level="success")
+
+    def _choose_json_file(self, title: str) -> str:
+        """Choose one JSON file from the current record directory."""
+        start_dir = self.save_path_input.text().strip() or os.getcwd()
+        file_path, _ = QFileDialog.getOpenFileName(self, title, start_dir, "JSON Files (*.json)")
+        return file_path
 
     def load(self) -> None:
         """Load a saved JSON file and populate the form fields."""
-        start_dir = self.save_path_input.text().strip() or os.getcwd()
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Load Parameters JSON",
-            start_dir,
-            "JSON Files (*.json)",
-        )
+        file_path = self._choose_json_file("Open Existing Parameters JSON")
         if not file_path:
             return
 
         self._load_json_file(file_path)
+
+    def load_template(self) -> None:
+        """Load reusable values from JSON while starting a fresh run."""
+        file_path = self._choose_json_file("Use Parameters JSON as Template")
+        if not file_path:
+            return
+        self._load_json_file(file_path, as_template=True)
 
     def get_info(self) -> Dict[str, Dict[str, Any]]:
         """Collect all non-empty form values into a nested dictionary."""
@@ -1179,6 +1562,7 @@ class GenerateForm(QWidget):
         shared_index = 0
         for i in range(target_count):
             info_dict[f"target_{i + 1}"] = {
+                "Target ID": self.target_id_input[i].text(),
                 "Target Material": self.target_input[i].text(),
                 "Offset X (mm)": self.offset_x_input[shared_index].text(),
                 "Offset Y (mm)": self.offset_y_input[shared_index].text(),
@@ -1200,7 +1584,7 @@ class GenerateForm(QWidget):
                 "Spot Height (mm)": self.spot_height_input[shared_index].text(),
                 "Spot Area (mm^2)": self.spot_area_input[shared_index].text(),
                 "Magnification (x)": self.magnification_input[shared_index].text(),
-                "Pre-Ablation Pulses (count)": self.pre_number_pulses_input[i].text(),
+                "Pre-Ablation Pulses (count)": self.pre_number_pulses_input[i].value(),
                 "Pre-Ablation Frequency (Hz)": self.pre_frequency_input[i].text(),
                 "Pre-Annealing Temperature (\N{DEGREE SIGN}C)": self.pre_annealing_temperature_input[
                     shared_index
@@ -1230,7 +1614,15 @@ class GenerateForm(QWidget):
                 "Ablation Temperature (\N{DEGREE SIGN}C)": self.temperature_input[i].text(),
                 "Ablation Atmosphere Gas": self.gas_input[i].currentText(),
                 "Ablation Frequency (Hz)": self.frequency_input[i].text(),
-                "Ablation Pulses (count)": self.number_pulses_input[i].text(),
+                "Ablation Pulses (count)": self.number_pulses_input[i].value(),
+                "Additional On-Target Pulses (count)": self.additional_on_target_pulses_input[i].value(),
+                "Off-Target Pulses (count)": self.off_target_pulses_input[i].value(),
+                "On-Target Pulses This Run (count)": self.on_target_pulses_this_run_output[i].value(),
+                "All Laser Pulses This Run (count)": self.all_laser_pulses_this_run_output[i].value(),
+                "Target Pulses Before Run (count)": self.target_pulses_before_input[i].value(),
+                "Target Pulses After Run (count)": self.target_pulses_after_output[i].value(),
+                "Pulse History Source": self.pulse_history_source_label[i].text(),
+                "Pulse Correction Reason": self.pulse_correction_reason[i],
             }
 
         for section_name in list(info_dict.keys()):
@@ -1252,6 +1644,30 @@ class GenerateForm(QWidget):
 
     def save(self) -> None:
         """Serialize the current form state to JSON and HTML files."""
+        pending_targets = [
+            index + 1
+            for index, ready in enumerate(self.pulse_history_ready)
+            if not ready
+            and (
+                self.pre_number_pulses_input[index].value()
+                or self.number_pulses_input[index].value()
+                or self.additional_on_target_pulses_input[index].value()
+            )
+        ]
+        if pending_targets:
+            target_text = ", ".join(str(index) for index in pending_targets)
+            answer = QMessageBox.warning(
+                self,
+                "Pulse History Not Updated",
+                f"Target(s) {target_text} have on-target pulses, but their starting history has not been updated. "
+                "Saving now may produce an incorrect cumulative total.\n\nContinue anyway?",
+                QMessageBox.Yes | QMessageBox.Cancel,
+                QMessageBox.Cancel,
+            )
+            if answer != QMessageBox.Yes:
+                self._show_status("Save paused. Update or correct the target pulse history.", level="warning", timeout_ms=0)
+                return
+
         try:
             result = save_parameters_json_and_html(
                 info_dict=self.get_info(),
@@ -1259,11 +1675,15 @@ class GenerateForm(QWidget):
                 file_stem=self._default_file_stem(),
             )
         except OSError as exc:
-            self.status_label.setText(f"Failed to save JSON: {exc}")
+            self._show_status(f"Failed to save JSON: {exc}", level="error", timeout_ms=0)
             return
 
         if result.html_error:
-            self.status_label.setText(f"JSON saved. HTML export failed: {result.html_error}")
+            self._show_status(
+                f"JSON saved. HTML export failed: {result.html_error}",
+                level="warning",
+                timeout_ms=0,
+            )
             return
 
-        self.status_label.setText("Parameters saved to JSON and HTML!")
+        self._show_status("Parameters saved to JSON and HTML.", level="success")

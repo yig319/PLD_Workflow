@@ -85,7 +85,16 @@ python examples/launch_rheed_imm_visualizer.py
 ## App details
 
 ### Parameter Form
-Records PLD growth parameters. Saves JSON and exports HTML reports.
+Records PLD growth parameters. Saves JSON and exports HTML reports. The form can open an
+existing record for editing or use it as a template for a new run. Template mode preserves
+reusable process settings while clearing run-specific pulse values and starting a fresh
+timestamp. Per-target pulse tracking supports:
+
+- Target ID plus material and chamber matching
+- Local JSON-history lookup using records earlier than the form timestamp
+- Separate pre-ablation, growth-ablation, additional on-target, and off-target pulse counts
+- Calculated before-run, after-run, on-target, and all-laser totals
+- Verified manual correction with a recorded reason
 
 ### Plume Manager
 Handles plume workspace creation from PLD JSON metadata — staging raw files, previewing frames, and packing/editing metadata. Features:

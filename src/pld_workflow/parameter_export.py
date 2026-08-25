@@ -39,7 +39,7 @@ def coerce_numeric_values(data: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str
     for section_name, section in data.items():
         converted[section_name] = {}
         for key, value in section.items():
-            converted[section_name][key] = _coerce_float(value)
+            converted[section_name][key] = _coerce_number(key, value)
     return converted
 
 
@@ -74,6 +74,15 @@ def _coerce_float(value: Any) -> Any:
         return float(value)
     except (TypeError, ValueError):
         return value
+
+
+def _coerce_number(key: str, value: Any) -> Any:
+    """Preserve pulse counts as integers while normalizing other numbers."""
+    converted = _coerce_float(value)
+    if "Pulses" in key and key.endswith("(count)"):
+        if isinstance(converted, float) and converted.is_integer():
+            return int(converted)
+    return converted
 
 
 def _has_nested_container(value: Any) -> bool:
@@ -351,6 +360,20 @@ def _deposition_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
             [
                 ("Frequency (Hz)", ("Ablation Frequency (Hz)", "Ablation-Frequency(Hz)")),
                 ("Pulses (count)", ("Ablation Pulses (count)", "Ablation-Pulses")),
+            ],
+        ),
+        (
+            "Pulse Tracking",
+            [
+                ("Target ID", ("Target ID",)),
+                ("Before Run (count)", ("Target Pulses Before Run (count)",)),
+                ("Additional On-Target (count)", ("Additional On-Target Pulses (count)",)),
+                ("Off-Target (count)", ("Off-Target Pulses (count)",)),
+                ("On-Target This Run (count)", ("On-Target Pulses This Run (count)",)),
+                ("All Laser Pulses This Run (count)", ("All Laser Pulses This Run (count)",)),
+                ("After Run (count)", ("Target Pulses After Run (count)",)),
+                ("History Source", ("Pulse History Source",)),
+                ("Correction Reason", ("Pulse Correction Reason",)),
             ],
         ),
     ]
