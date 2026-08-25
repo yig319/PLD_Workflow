@@ -165,6 +165,7 @@ class GenerateForm(QWidget):
         self.gas_input: List[QComboBox] = []
         self.frequency_input: List[QLineEdit] = []
         self.number_pulses_input: List[QLineEdit] = []
+        self.target_lifetime_pulses_input: List[QLineEdit] = []
 
     def _append_target_fields(self) -> int:
         """Append one set of target-page widgets and return its index."""
@@ -216,6 +217,7 @@ class GenerateForm(QWidget):
         self.gas_input.append(self._new_gas_combo())
         self.frequency_input.append(self._new_line_edit())
         self.number_pulses_input.append(self._new_line_edit())
+        self.target_lifetime_pulses_input.append(self._new_line_edit())
 
         return len(self.target_input) - 1
 
@@ -392,6 +394,7 @@ class GenerateForm(QWidget):
 
         self.shared_container: QWidget | None = None
         self.target_material_stack = QStackedWidget(self)
+        self.target_lifetime_stack = QStackedWidget(self)
         self.Stack = QStackedWidget(self)
 
         self.status_box = QGroupBox("Status")
@@ -502,7 +505,13 @@ class GenerateForm(QWidget):
 
     def _clear_shared_sections(self) -> None:
         """Remove the shared form body before rebuilding target storage."""
-        for shared_widget in (self.pageCombo, self.button_add_target, self.target_material_stack, self.Stack):
+        for shared_widget in (
+            self.pageCombo,
+            self.button_add_target,
+            self.target_material_stack,
+            self.target_lifetime_stack,
+            self.Stack,
+        ):
             if shared_widget.parentWidget() is not None:
                 shared_widget.setParent(None)
         if self.form_notes.parentWidget() is not None:
@@ -654,11 +663,13 @@ class GenerateForm(QWidget):
         deposition_group.setLayout(deposition_layout)
         deposition_layout.addWidget(self.pageCombo, 0, 0)
         deposition_layout.addWidget(self.target_material_stack, 0, 1)
-        deposition_layout.addWidget(self.button_add_target, 0, 2)
-        deposition_layout.addWidget(self.Stack, 1, 0, 1, 3)
+        deposition_layout.addWidget(self.target_lifetime_stack, 0, 2)
+        deposition_layout.addWidget(self.button_add_target, 0, 3)
+        deposition_layout.addWidget(self.Stack, 1, 0, 1, 4)
         deposition_layout.setColumnStretch(0, 1)
         deposition_layout.setColumnStretch(1, 1)
-        deposition_layout.setColumnStretch(2, 0)
+        deposition_layout.setColumnStretch(2, 1)
+        deposition_layout.setColumnStretch(3, 0)
 
         process_grid.addWidget(form_pre_annealing, 0, 0)
         process_grid.addWidget(form_post_annealing, 0, 1)
@@ -731,6 +742,8 @@ class GenerateForm(QWidget):
         form_ablation, layout_ablation = self._build_form_group("Ablation")
         layout_ablation.addRow(QLabel("Frequency (Hz)"), self.frequency_input[create_index])
         layout_ablation.addRow(QLabel("Pulses (count)"), self.number_pulses_input[create_index])
+        # Target Lifetime Pulses now lives in target_lifetime_stack, next to
+        # Target Material at the top of the Deposition group -- see add_target().
 
         for form in (form_laser, form_growth_temp, form_atmosphere, form_pre_ablation, form_ablation):
             form.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
@@ -759,6 +772,21 @@ class GenerateForm(QWidget):
         target_material_layout.addWidget(self.target_input[idx])
         self.target_material_stack.addWidget(target_material_page)
 
+        target_lifetime_page = QWidget()
+        target_lifetime_layout = QHBoxLayout()
+        target_lifetime_layout.setContentsMargins(0, 0, 0, 0)
+        target_lifetime_layout.setSpacing(8)
+        target_lifetime_page.setLayout(target_lifetime_layout)
+        lifetime_label = QLabel("Lifetime Pulses (count)")
+        lifetime_label.setToolTip(
+            "Running total of ablation pulses on this physical target surface since it was last "
+            "polished. Enter/update by hand each growth -- this growth's own \"Pulses (count)\" "
+            "plus the target's running total before this growth. Reset to 0 after polishing."
+        )
+        target_lifetime_layout.addWidget(lifetime_label)
+        target_lifetime_layout.addWidget(self.target_lifetime_pulses_input[idx])
+        self.target_lifetime_stack.addWidget(target_lifetime_page)
+
         page = QWidget()
         page.setLayout(self.stackUI(idx))
         self.Stack.addWidget(page)
@@ -777,6 +805,11 @@ class GenerateForm(QWidget):
         while self.target_material_stack.count() > 0:
             page = self.target_material_stack.widget(0)
             self.target_material_stack.removeWidget(page)
+            page.deleteLater()
+
+        while self.target_lifetime_stack.count() > 0:
+            page = self.target_lifetime_stack.widget(0)
+            self.target_lifetime_stack.removeWidget(page)
             page.deleteLater()
 
         while self.Stack.count() > 0:
@@ -803,6 +836,7 @@ class GenerateForm(QWidget):
     def switchPage(self, index: int) -> None:
         """Switch the active deposition controls for the selected target."""
         self.target_material_stack.setCurrentIndex(index)
+        self.target_lifetime_stack.setCurrentIndex(index)
         self.Stack.setCurrentIndex(index)
         self.current_page = index
 
@@ -846,9 +880,15 @@ class GenerateForm(QWidget):
         self._set_line_edit_value(self.time_input, resolved_time)
         self._set_line_edit_value(self.save_path_input, header.get("Path") or resolved_path)
         self._set_combo_value(self.chamber_ComboBox, header.get("Chamber"))
+        # "Cool Down Atmosphere" is written into "preparation" as of
+        # 2026-07-31 (it belongs with the other Cool Down fields). Files saved
+        # before that keep it in "header", so check the new location first and
+        # fall back, rather than silently loading a blank atmosphere.
+        preparation_section = info_dict.get("preparation", {})
         self._set_combo_value(
             self.cool_down_gas,
-            self._first_present_value(header, "Cool Down Atmosphere", "Post-Annealing Atmosphere"),
+            self._first_present_value(preparation_section, "Cool Down Atmosphere", "Post-Annealing Atmosphere")
+            or self._first_present_value(header, "Cool Down Atmosphere", "Post-Annealing Atmosphere"),
         )
         self.notes_input.setPlainText(str(header.get("Notes", "")))
 
@@ -870,53 +910,24 @@ class GenerateForm(QWidget):
         else:
             self._reset_targets(len(target_keys))
 
+        # "instrument"/"preparation" are the current schema (recorded once per
+        # file, matching the single shared section the GUI actually shows).
+        # Files saved before this change duplicate the same fields into every
+        # target_N instead -- fall back to the first target's dict so old
+        # files still load correctly.
+        first_target_dict = info_dict.get(target_keys[0], {}) if target_keys else {}
+        instrument = info_dict.get("instrument") or first_target_dict
+        preparation = info_dict.get("preparation") or first_target_dict
+        self._apply_shared_dict(instrument, preparation)
+
         for i, key in enumerate(target_keys):
             target_dict = info_dict.get(key, {})
             self._set_line_edit_value(self.target_input[i], target_dict.get("Target Material"))
 
             self._set_line_edit_value(
-                self.offset_x_input[i],
-                self._first_present_value(target_dict, "Offset X (mm)", "Offset X"),
-            )
-            self._set_line_edit_value(
-                self.offset_y_input[i],
-                self._first_present_value(target_dict, "Offset Y (mm)", "Offset Y"),
-            )
-            self._set_line_edit_value(
-                self.scan_diameter_input[i],
-                self._first_present_value(target_dict, "Scan Diameter (mm)", "Scan Diameter"),
-            )
-            self._set_line_edit_value(
-                self.scan_speed_xz_input[i],
-                self._first_present_value(target_dict, "Scan Speed X/Z (mm/s)"),
-            )
-
-            self._set_line_edit_value(
-                self.heater_position_x_input[i],
-                self._first_present_value(target_dict, "Heater Position X (mm)", "Heater Position X"),
-            )
-            self._set_line_edit_value(
-                self.heater_position_y_input[i],
-                self._first_present_value(target_dict, "Heater Position Y (mm)", "Heater Position Y"),
-            )
-            self._set_line_edit_value(
-                self.heater_position_z_input[i],
-                self._first_present_value(target_dict, "Heater Position Z (mm)", "Heater Position Z"),
-            )
-            self._set_line_edit_value(
-                self.heater_tilt_input[i],
-                self._first_present_value(target_dict, "Tilt (deg)", "Tilt", "Tile"),
-            )
-            self._set_line_edit_value(
-                self.heater_azimuth_input[i],
-                self._first_present_value(target_dict, "Azimuth (deg)", "Azimuth"),
-            )
-
-            self._set_line_edit_value(
                 self.fluence_input[i],
                 self._first_present_value(target_dict, "Fluence (J/cm^2)", "Fluence"),
             )
-            
             self._set_line_edit_value(
                 self.laser_energy_input[i],
                 self._first_present_value(target_dict, "Laser Energy (mJ)", "Laser Energy(mJ)"),
@@ -935,37 +946,6 @@ class GenerateForm(QWidget):
                 ),
             )
 
-
-            self._set_line_edit_value(
-                self.mask_width_input[i],
-                self._first_present_value(target_dict, "Mask Width (mm)", "Mask Width"),
-            )
-            self._set_line_edit_value(
-                self.mask_height_input[i],
-                self._first_present_value(target_dict, "Mask Height (mm)", "Mask Height"),
-            )
-            self._set_line_edit_value(
-                self.mask_area_input[i],
-                self._first_present_value(target_dict, "Mask Area (mm^2)", "Mask Area"),
-            )
-
-            self._set_line_edit_value(
-                self.spot_width_input[i],
-                self._first_present_value(target_dict, "Spot Width (mm)", "Spot Width"),
-            )
-            self._set_line_edit_value(
-                self.spot_height_input[i],
-                self._first_present_value(target_dict, "Spot Height (mm)", "Spot Height"),
-            )
-            self._set_line_edit_value(
-                self.spot_area_input[i],
-                self._first_present_value(target_dict, "Spot Area (mm^2)", "Spot Area"),
-            )
-            self._set_line_edit_value(
-                self.magnification_input[i],
-                self._first_present_value(target_dict, "Magnification (x)", "Magnification"),
-            )
-
             self._set_line_edit_value(
                 self.pre_number_pulses_input[i],
                 self._first_present_value(target_dict, "Pre-Ablation Pulses (count)", "Pre-Ablation-Pulses"),
@@ -976,34 +956,6 @@ class GenerateForm(QWidget):
                     target_dict,
                     "Pre-Ablation Frequency (Hz)",
                     "Pre-Ablation-Frequency(Hz)",
-                ),
-            )
-            self._set_line_edit_value(
-                self.pre_annealing_temperature_input[i],
-                self._first_present_value(
-                    target_dict,
-                    "Pre-Annealing Temperature (\N{DEGREE SIGN}C)",
-                    "Pre-Annealing-Temperature(\N{DEGREE SIGN}C)",
-                    "Pre-Annealing Temperature (degC)",
-                ),
-            )
-            self._set_line_edit_value(
-                self.pre_annealing_heating_speed_input[i],
-                self._first_present_value(
-                    target_dict,
-                    "Pre-Annealing Heat Rate (\N{DEGREE SIGN}C/min)",
-                    "Pre-Annealing Heating Speed (\N{DEGREE SIGN}C/min)",
-                    "Pre-Annealing-Heating-Speed(\N{DEGREE SIGN}C/min)",
-                ),
-            )
-            self._set_line_edit_value(
-                self.pre_annealing_time_input[i],
-                self._first_present_value(
-                    target_dict,
-                    "Pre-Annealing Hold Time (min)",
-                    "Pre-Annealing Time (min)",
-                    "Pre-Annealing-Time(min)",
-                    "Pre-Annealing-Time",
                 ),
             )
             self._set_line_edit_value(
@@ -1025,19 +977,6 @@ class GenerateForm(QWidget):
                     "Pre-Annealing Growth Temperature (degC)",
                     "Growth Temperature (\N{DEGREE SIGN}C)",
                     "Growth Temperature (degC)",
-                ),
-            )
-            self._set_line_edit_value(
-                self.pre_annealing_pressure_mbar_input[i],
-                self._first_present_value(target_dict, "Pre-Annealing Pressure (mbar)"),
-            )
-            self._set_line_edit_value(
-                self.pre_annealing_pressure_input[i],
-                self._first_present_value(
-                    target_dict,
-                    "Pre-Annealing Pressure (mTorr)",
-                    "Pre-Annealing Atmosphere Pressure (mTorr)",
-                    "Pre-Annealing-Atmosphere-Pressure(mTorr)",
                 ),
             )
             self._set_line_edit_value(
@@ -1075,27 +1014,6 @@ class GenerateForm(QWidget):
                     "Post-Annealing-Time(min)",
                 ),
             )
-            self._set_line_edit_value(
-                self.post_annealing_cool_rate_input[i],
-                self._first_present_value(
-                    target_dict,
-                    "Post-Annealing Cooling Rate (\N{DEGREE SIGN}C/min)",
-                    "Post-Annealing Cool Rate (\N{DEGREE SIGN}C/min)",
-                ),
-            )
-            self._set_line_edit_value(
-                self.post_annealing_pressure_mbar_input[i],
-                self._first_present_value(target_dict, "Post-Annealing Pressure (mbar)"),
-            )
-            self._set_line_edit_value(
-                self.post_annealing_pressure_input[i],
-                self._first_present_value(
-                    target_dict,
-                    "Post-Annealing Pressure (mTorr)",
-                    "Post-Annealing Atmosphere Pressure (mTorr)",
-                    "Post-Annealing-Atmosphere-Pressure(mTorr)",
-                ),
-            )
 
             self._set_line_edit_value(
                 self.temperature_input[i],
@@ -1122,6 +1040,143 @@ class GenerateForm(QWidget):
                 self.number_pulses_input[i],
                 self._first_present_value(target_dict, "Ablation Pulses (count)", "Ablation-Pulses"),
             )
+            self._set_line_edit_value(
+                self.target_lifetime_pulses_input[i],
+                self._first_present_value(target_dict, "Target Lifetime Pulses (count)"),
+            )
+
+    def _apply_shared_dict(self, instrument: Dict[str, Any], preparation: Dict[str, Any]) -> None:
+        """Populate the ONE shared Instrument/Preparation section (index 0) --
+        matches _build_shared_sections(), which only ever displays index 0.
+        """
+        shared_index = 0
+        self._set_line_edit_value(
+            self.offset_x_input[shared_index],
+            self._first_present_value(instrument, "Offset X (mm)", "Offset X"),
+        )
+        self._set_line_edit_value(
+            self.offset_y_input[shared_index],
+            self._first_present_value(instrument, "Offset Y (mm)", "Offset Y"),
+        )
+        self._set_line_edit_value(
+            self.scan_diameter_input[shared_index],
+            self._first_present_value(instrument, "Scan Diameter (mm)", "Scan Diameter"),
+        )
+        self._set_line_edit_value(
+            self.scan_speed_xz_input[shared_index],
+            self._first_present_value(instrument, "Scan Speed X/Z (mm/s)"),
+        )
+        self._set_line_edit_value(
+            self.heater_position_x_input[shared_index],
+            self._first_present_value(instrument, "Heater Position X (mm)", "Heater Position X"),
+        )
+        self._set_line_edit_value(
+            self.heater_position_y_input[shared_index],
+            self._first_present_value(instrument, "Heater Position Y (mm)", "Heater Position Y"),
+        )
+        self._set_line_edit_value(
+            self.heater_position_z_input[shared_index],
+            self._first_present_value(instrument, "Heater Position Z (mm)", "Heater Position Z"),
+        )
+        self._set_line_edit_value(
+            self.heater_tilt_input[shared_index],
+            self._first_present_value(instrument, "Tilt (deg)", "Tilt", "Tile"),
+        )
+        self._set_line_edit_value(
+            self.heater_azimuth_input[shared_index],
+            self._first_present_value(instrument, "Azimuth (deg)", "Azimuth"),
+        )
+        self._set_line_edit_value(
+            self.mask_width_input[shared_index],
+            self._first_present_value(instrument, "Mask Width (mm)", "Mask Width"),
+        )
+        self._set_line_edit_value(
+            self.mask_height_input[shared_index],
+            self._first_present_value(instrument, "Mask Height (mm)", "Mask Height"),
+        )
+        self._set_line_edit_value(
+            self.mask_area_input[shared_index],
+            self._first_present_value(instrument, "Mask Area (mm^2)", "Mask Area"),
+        )
+        self._set_line_edit_value(
+            self.spot_width_input[shared_index],
+            self._first_present_value(instrument, "Spot Width (mm)", "Spot Width"),
+        )
+        self._set_line_edit_value(
+            self.spot_height_input[shared_index],
+            self._first_present_value(instrument, "Spot Height (mm)", "Spot Height"),
+        )
+        self._set_line_edit_value(
+            self.spot_area_input[shared_index],
+            self._first_present_value(instrument, "Spot Area (mm^2)", "Spot Area"),
+        )
+        self._set_line_edit_value(
+            self.magnification_input[shared_index],
+            self._first_present_value(instrument, "Magnification (x)", "Magnification"),
+        )
+
+        self._set_line_edit_value(
+            self.pre_annealing_temperature_input[shared_index],
+            self._first_present_value(
+                preparation,
+                "Pre-Annealing Temperature (\N{DEGREE SIGN}C)",
+                "Pre-Annealing-Temperature(\N{DEGREE SIGN}C)",
+                "Pre-Annealing Temperature (degC)",
+            ),
+        )
+        self._set_line_edit_value(
+            self.pre_annealing_heating_speed_input[shared_index],
+            self._first_present_value(
+                preparation,
+                "Pre-Annealing Heat Rate (\N{DEGREE SIGN}C/min)",
+                "Pre-Annealing Heating Speed (\N{DEGREE SIGN}C/min)",
+                "Pre-Annealing-Heating-Speed(\N{DEGREE SIGN}C/min)",
+            ),
+        )
+        self._set_line_edit_value(
+            self.pre_annealing_time_input[shared_index],
+            self._first_present_value(
+                preparation,
+                "Pre-Annealing Hold Time (min)",
+                "Pre-Annealing Time (min)",
+                "Pre-Annealing-Time(min)",
+                "Pre-Annealing-Time",
+            ),
+        )
+        self._set_line_edit_value(
+            self.pre_annealing_pressure_mbar_input[shared_index],
+            self._first_present_value(preparation, "Pre-Annealing Pressure (mbar)"),
+        )
+        self._set_line_edit_value(
+            self.pre_annealing_pressure_input[shared_index],
+            self._first_present_value(
+                preparation,
+                "Pre-Annealing Pressure (mTorr)",
+                "Pre-Annealing Atmosphere Pressure (mTorr)",
+                "Pre-Annealing-Atmosphere-Pressure(mTorr)",
+            ),
+        )
+        self._set_line_edit_value(
+            self.post_annealing_cool_rate_input[shared_index],
+            self._first_present_value(
+                preparation,
+                "Post-Annealing Cooling Rate (\N{DEGREE SIGN}C/min)",
+                "Post-Annealing Cool Rate (\N{DEGREE SIGN}C/min)",
+            ),
+        )
+        self._set_line_edit_value(
+            self.post_annealing_pressure_mbar_input[shared_index],
+            self._first_present_value(preparation, "Post-Annealing Pressure (mbar)"),
+        )
+        self._set_line_edit_value(
+            self.post_annealing_pressure_input[shared_index],
+            self._first_present_value(
+                preparation,
+                "Post-Annealing Pressure (mTorr)",
+                "Post-Annealing Atmosphere Pressure (mTorr)",
+                "Post-Annealing-Atmosphere-Pressure(mTorr)",
+            ),
+        )
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
@@ -1170,67 +1225,83 @@ class GenerateForm(QWidget):
                 "Chamber": self.chamber_ComboBox.currentText(),
                 "Substrate": self.substrate_ComboBox.currentText(),
                 "Substrate Size": self.substrate_size_ComboBox.currentText(),
-                "Cool Down Atmosphere": self.cool_down_gas.currentText(),
+                # "Cool Down Atmosphere" moved to info_dict["preparation"]
+                # 2026-07-31: the widget sits in the "Cool Down" group box
+                # between Cooling Rate and Pressure, so writing it into the
+                # header put it in a different JSON section from the fields
+                # it is shown with. _apply_info_dict() still reads the old
+                # header position, so files saved before this load fine.
                 "Notes": self.notes_input.toPlainText(),
             }
         }
 
-        target_count = len(self.target_input)
+        # Chamber/optical geometry and pre-/post-annealing are recorded ONCE
+        # per growth run, regardless of target count -- the GUI already only
+        # shows one shared "Instrument"/"Preparation" section (built once, in
+        # _build_shared_sections(), from index 0 of these lists), so writing
+        # them out per-target here was always a mismatch with what the user
+        # actually edits. See _apply_info_dict() for the matching loader
+        # change, with a fallback to the old duplicated-in-target_1 shape for
+        # files saved before this change.
         shared_index = 0
+        info_dict["instrument"] = {
+            "Offset X (mm)": self.offset_x_input[shared_index].text(),
+            "Offset Y (mm)": self.offset_y_input[shared_index].text(),
+            "Scan Diameter (mm)": self.scan_diameter_input[shared_index].text(),
+            "Scan Speed X/Z (mm/s)": self.scan_speed_xz_input[shared_index].text(),
+            "Heater Position X (mm)": self.heater_position_x_input[shared_index].text(),
+            "Heater Position Y (mm)": self.heater_position_y_input[shared_index].text(),
+            "Heater Position Z (mm)": self.heater_position_z_input[shared_index].text(),
+            "Tilt (deg)": self.heater_tilt_input[shared_index].text(),
+            "Azimuth (deg)": self.heater_azimuth_input[shared_index].text(),
+            "Mask Width (mm)": self.mask_width_input[shared_index].text(),
+            "Mask Height (mm)": self.mask_height_input[shared_index].text(),
+            "Mask Area (mm^2)": self.mask_area_input[shared_index].text(),
+            "Spot Width (mm)": self.spot_width_input[shared_index].text(),
+            "Spot Height (mm)": self.spot_height_input[shared_index].text(),
+            "Spot Area (mm^2)": self.spot_area_input[shared_index].text(),
+            "Magnification (x)": self.magnification_input[shared_index].text(),
+        }
+        info_dict["preparation"] = {
+            "Pre-Annealing Temperature (\N{DEGREE SIGN}C)": self.pre_annealing_temperature_input[
+                shared_index
+            ].text(),
+            "Pre-Annealing Heating Speed (\N{DEGREE SIGN}C/min)": self.pre_annealing_heating_speed_input[
+                shared_index
+            ].text(),
+            "Pre-Annealing Time (min)": self.pre_annealing_time_input[shared_index].text(),
+            "Pre-Annealing Pressure (mbar)": self.pre_annealing_pressure_mbar_input[shared_index].text(),
+            "Pre-Annealing Pressure (mTorr)": self.pre_annealing_pressure_input[shared_index].text(),
+            "Post-Annealing Cooling Rate (\N{DEGREE SIGN}C/min)": self.post_annealing_cool_rate_input[
+                shared_index
+            ].text(),
+            # Same order as the "Cool Down" group box: Cooling Rate,
+            # Atmosphere, Pressure. Moved here from the header 2026-07-31.
+            "Cool Down Atmosphere": self.cool_down_gas.currentText(),
+            "Post-Annealing Pressure (mbar)": self.post_annealing_pressure_mbar_input[shared_index].text(),
+            "Post-Annealing Pressure (mTorr)": self.post_annealing_pressure_input[shared_index].text(),
+        }
+
+        target_count = len(self.target_input)
         for i in range(target_count):
             info_dict[f"target_{i + 1}"] = {
                 "Target Material": self.target_input[i].text(),
-                "Offset X (mm)": self.offset_x_input[shared_index].text(),
-                "Offset Y (mm)": self.offset_y_input[shared_index].text(),
-                "Scan Diameter (mm)": self.scan_diameter_input[shared_index].text(),
-                "Scan Speed X/Z (mm/s)": self.scan_speed_xz_input[shared_index].text(),
-                "Heater Position X (mm)": self.heater_position_x_input[shared_index].text(),
-                "Heater Position Y (mm)": self.heater_position_y_input[shared_index].text(),
-                "Heater Position Z (mm)": self.heater_position_z_input[shared_index].text(),
-                "Tilt (deg)": self.heater_tilt_input[shared_index].text(),
-                "Azimuth (deg)": self.heater_azimuth_input[shared_index].text(),
                 "Fluence (J/cm^2)": self.fluence_input[i].text(),
                 "Laser Energy (mJ)": self.laser_energy_input[i].text(),
                 "Laser Voltage (kV)": self.laser_voltage_input[i].text(),
                 "Measured Energy (mJ)": self.measured_energy_input[i].text(),
-                "Mask Width (mm)": self.mask_width_input[shared_index].text(),
-                "Mask Height (mm)": self.mask_height_input[shared_index].text(),
-                "Mask Area (mm^2)": self.mask_area_input[shared_index].text(),
-                "Spot Width (mm)": self.spot_width_input[shared_index].text(),
-                "Spot Height (mm)": self.spot_height_input[shared_index].text(),
-                "Spot Area (mm^2)": self.spot_area_input[shared_index].text(),
-                "Magnification (x)": self.magnification_input[shared_index].text(),
                 "Pre-Ablation Pulses (count)": self.pre_number_pulses_input[i].text(),
                 "Pre-Ablation Frequency (Hz)": self.pre_frequency_input[i].text(),
-                "Pre-Annealing Temperature (\N{DEGREE SIGN}C)": self.pre_annealing_temperature_input[
-                    shared_index
-                ].text(),
-                "Pre-Annealing Heating Speed (\N{DEGREE SIGN}C/min)": self.pre_annealing_heating_speed_input[
-                    shared_index
-                ].text(),
-                "Pre-Annealing Time (min)": self.pre_annealing_time_input[shared_index].text(),
                 "Growth Condition Heating Rate (\N{DEGREE SIGN}C/min)": self.pre_annealing_growth_rate_input[
                     i
                 ].text(),
-                "Pre-Annealing Pressure (mbar)": self.pre_annealing_pressure_mbar_input[shared_index].text(),
-                "Pre-Annealing Pressure (mTorr)": self.pre_annealing_pressure_input[
-                    shared_index
-                ].text(),
                 "Growth Pressure (mbar)": self.growth_pressure_mbar_input[i].text(),
-                "Growth Pressure (mTorr)": self.growth_pressure_input[
-                    i
-                ].text(),
-                "Post-Annealing Cooling Rate (\N{DEGREE SIGN}C/min)": self.post_annealing_cool_rate_input[
-                    shared_index
-                ].text(),
-                "Post-Annealing Pressure (mbar)": self.post_annealing_pressure_mbar_input[shared_index].text(),
-                "Post-Annealing Pressure (mTorr)": self.post_annealing_pressure_input[
-                    shared_index
-                ].text(),
+                "Growth Pressure (mTorr)": self.growth_pressure_input[i].text(),
                 "Ablation Temperature (\N{DEGREE SIGN}C)": self.temperature_input[i].text(),
                 "Ablation Atmosphere Gas": self.gas_input[i].currentText(),
                 "Ablation Frequency (Hz)": self.frequency_input[i].text(),
                 "Ablation Pulses (count)": self.number_pulses_input[i].text(),
+                "Target Lifetime Pulses (count)": self.target_lifetime_pulses_input[i].text(),
             }
 
         for section_name in list(info_dict.keys()):
