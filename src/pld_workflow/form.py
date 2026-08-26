@@ -181,7 +181,17 @@ class GenerateForm(QWidget):
         self.temperature_input: List[QLineEdit] = []
         self.gas_input: List[QComboBox] = []
         self.frequency_input: List[QLineEdit] = []
-        self.number_pulses_input: List[QLineEdit] = []
+        self.number_pulses_input: List[QSpinBox] = []
+        self.additional_on_target_pulses_input: List[QSpinBox] = []
+        self.off_target_pulses_input: List[QSpinBox] = []
+        self.target_pulses_before_input: List[QSpinBox] = []
+        self.on_target_pulses_this_run_output: List[QSpinBox] = []
+        self.target_pulses_after_output: List[QSpinBox] = []
+        self.all_laser_pulses_this_run_output: List[QSpinBox] = []
+        self.pulse_history_source_label: List[QLabel] = []
+        self.pulse_correction_label: List[QLabel] = []
+        self.pulse_correction_reason: List[str] = []
+        self.pulse_history_ready: List[bool] = []
         self.target_lifetime_pulses_input: List[QLineEdit] = []
 
     def _append_target_fields(self) -> int:
@@ -234,7 +244,13 @@ class GenerateForm(QWidget):
         self.temperature_input.append(self._new_line_edit())
         self.gas_input.append(self._new_gas_combo())
         self.frequency_input.append(self._new_line_edit())
-        self.number_pulses_input.append(self._new_line_edit())
+        self.number_pulses_input.append(self._new_pulse_spinbox())
+        self.additional_on_target_pulses_input.append(self._new_pulse_spinbox())
+        self.off_target_pulses_input.append(self._new_pulse_spinbox())
+        self.target_pulses_before_input.append(self._new_pulse_spinbox(read_only=True))
+        self.on_target_pulses_this_run_output.append(self._new_pulse_spinbox(read_only=True))
+        self.target_pulses_after_output.append(self._new_pulse_spinbox(read_only=True))
+        self.all_laser_pulses_this_run_output.append(self._new_pulse_spinbox(read_only=True))
         self.target_lifetime_pulses_input.append(self._new_line_edit())
 
         source_label = QLabel("History not loaded")
@@ -1260,7 +1276,7 @@ class GenerateForm(QWidget):
                 ),
             )
 
-            self._set_line_edit_value(
+            self._set_spin_value(
                 self.pre_number_pulses_input[i],
                 0
                 if as_template
@@ -1366,6 +1382,36 @@ class GenerateForm(QWidget):
                 self.target_lifetime_pulses_input[i],
                 self._first_present_value(target_dict, "Target Lifetime Pulses (count)"),
             )
+            self._set_spin_value(
+                self.additional_on_target_pulses_input[i],
+                0
+                if as_template
+                else self._first_present_value(target_dict, "Additional On-Target Pulses (count)"),
+            )
+            self._set_spin_value(
+                self.off_target_pulses_input[i],
+                0 if as_template else self._first_present_value(target_dict, "Off-Target Pulses (count)"),
+            )
+            self._set_spin_value(
+                self.target_pulses_before_input[i],
+                0
+                if as_template
+                else self._first_present_value(target_dict, "Target Pulses Before Run (count)"),
+            )
+            self.pulse_history_ready[i] = not as_template and "Target Pulses Before Run (count)" in target_dict
+            correction_reason = "" if as_template else str(target_dict.get("Pulse Correction Reason", "")).strip()
+            self.pulse_correction_reason[i] = correction_reason
+            if correction_reason:
+                self.pulse_correction_label[i].setText(f"Manual correction active: {correction_reason}")
+                self.pulse_correction_label[i].show()
+            else:
+                self.pulse_correction_label[i].hide()
+            if as_template:
+                self.pulse_history_source_label[i].setText("History not loaded for this new run")
+            else:
+                source_text = str(target_dict.get("Pulse History Source", "")).strip()
+                self.pulse_history_source_label[i].setText(source_text or "Saved record; refresh history before reuse")
+            self._recalculate_target_pulses(i)
 
     def _apply_shared_dict(self, instrument: Dict[str, Any], preparation: Dict[str, Any]) -> None:
         """Populate the ONE shared Instrument/Preparation section (index 0) --
@@ -1499,37 +1545,6 @@ class GenerateForm(QWidget):
                 "Post-Annealing-Atmosphere-Pressure(mTorr)",
             ),
         )
-
-            self._set_spin_value(
-                self.additional_on_target_pulses_input[i],
-                0
-                if as_template
-                else self._first_present_value(target_dict, "Additional On-Target Pulses (count)"),
-            )
-            self._set_spin_value(
-                self.off_target_pulses_input[i],
-                0 if as_template else self._first_present_value(target_dict, "Off-Target Pulses (count)"),
-            )
-            self._set_spin_value(
-                self.target_pulses_before_input[i],
-                0
-                if as_template
-                else self._first_present_value(target_dict, "Target Pulses Before Run (count)"),
-            )
-            self.pulse_history_ready[i] = not as_template and "Target Pulses Before Run (count)" in target_dict
-            correction_reason = "" if as_template else str(target_dict.get("Pulse Correction Reason", "")).strip()
-            self.pulse_correction_reason[i] = correction_reason
-            if correction_reason:
-                self.pulse_correction_label[i].setText(f"Manual correction active: {correction_reason}")
-                self.pulse_correction_label[i].show()
-            else:
-                self.pulse_correction_label[i].hide()
-            if as_template:
-                self.pulse_history_source_label[i].setText("History not loaded for this new run")
-            else:
-                source_text = str(target_dict.get("Pulse History Source", "")).strip()
-                self.pulse_history_source_label[i].setText(source_text or "Saved record; refresh history before reuse")
-            self._recalculate_target_pulses(i)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
