@@ -260,6 +260,19 @@ def _preparation_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
                         "Post-Annealing Cool Rate (\N{DEGREE SIGN}C/min)",
                     ),
                 ),
+                # Same order as the form's "Cool Down" group box: Cooling
+                # Rate, Atmosphere, Pressure. Added 2026-07-31 with the move
+                # of "Cool Down Atmosphere" from `header` into `preparation`
+                # -- the header dict is rendered generically, so before the
+                # move this value reached the report for free; from
+                # `preparation` it only appears if a spec row asks for it.
+                (
+                    "Atmosphere",
+                    (
+                        "Cool Down Atmosphere",
+                        "Post-Annealing Atmosphere",
+                    ),
+                ),
                 (
                     "Pressure (mbar)",
                     ("Post-Annealing Pressure (mbar)",),
@@ -360,6 +373,7 @@ def _deposition_spec() -> List[Tuple[str, List[Tuple[str, Tuple[str, ...]]]]]:
             [
                 ("Frequency (Hz)", ("Ablation Frequency (Hz)", "Ablation-Frequency(Hz)")),
                 ("Pulses (count)", ("Ablation Pulses (count)", "Ablation-Pulses")),
+                ("Target Lifetime Pulses (count)", ("Target Lifetime Pulses (count)",)),
             ],
         ),
         (
@@ -444,32 +458,38 @@ def write_html_report(file_path: str, data: Any) -> None:
     # Sort target keys
     target_keys = [key for key in data.keys() if key.lower().startswith("target_")]
     target_keys.sort(key=lambda key: int(key.split("_")[1]) if key.split("_")[1].isdigit() else key)
+    first_target = data.get(target_keys[0]) if target_keys else None
+
+    # "instrument"/"preparation" are the current schema (recorded once per
+    # file). Files saved before this change duplicate the same fields into
+    # every target_N instead -- fall back to the first target's dict so old
+    # files still render correctly.
+    instrument_source = data.get("instrument") or (first_target if isinstance(first_target, dict) else None)
+    preparation_source = data.get("preparation") or (first_target if isinstance(first_target, dict) else None)
+
+    # 2. Instrument card (shared, recorded once per file)
+    if isinstance(instrument_source, dict):
+        instrument_html = _render_sections(instrument_source, _instrument_spec())
+        if instrument_html:
+            cards.append(
+                "<section class='card'>"
+                "<h2>Instrument</h2>"
+                f"<div class='section-grid'>{instrument_html}</div>"
+                "</section>"
+            )
+
+    # 3. Preparation card (shared, recorded once per file)
+    if isinstance(preparation_source, dict):
+        prep_html = _render_sections(preparation_source, _preparation_spec())
+        if prep_html:
+            cards.append(
+                "<section class='card'>"
+                "<h2>Preparation</h2>"
+                f"<div class='section-grid'>{prep_html}</div>"
+                "</section>"
+            )
 
     if target_keys:
-        first_target = data[target_keys[0]]
-
-        # 2. Instrument card (shared — read from first target)
-        if isinstance(first_target, dict):
-            instrument_html = _render_sections(first_target, _instrument_spec())
-            if instrument_html:
-                cards.append(
-                    "<section class='card'>"
-                    "<h2>Instrument</h2>"
-                    f"<div class='section-grid'>{instrument_html}</div>"
-                    "</section>"
-                )
-
-        # 3. Preparation card (shared — read from first target)
-        if isinstance(first_target, dict):
-            prep_html = _render_sections(first_target, _preparation_spec())
-            if prep_html:
-                cards.append(
-                    "<section class='card'>"
-                    "<h2>Preparation</h2>"
-                    f"<div class='section-grid'>{prep_html}</div>"
-                    "</section>"
-                )
-
         # 4. Deposition cards (one per target)
         for target_key in target_keys:
             target_data = data.get(target_key)

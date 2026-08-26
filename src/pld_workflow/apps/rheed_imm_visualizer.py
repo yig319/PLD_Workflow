@@ -13,9 +13,10 @@ from pathlib import Path
 
 import numpy as np
 from PyQt5.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QGuiApplication, QImage, QPainter, QPen, QPixmap
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QImage, QPainter, QPen, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -23,6 +24,7 @@ from PyQt5.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -45,6 +47,16 @@ def _format_float(value: float | None, *, digits: int = 3, suffix: str = "") -> 
     if value is None:
         return "Not set"
     return f"{value:.{digits}f}{suffix}"
+
+
+def _fmt_val(value: float | None, *, precision: int = 6) -> str:
+    """Format a float, stripping trailing zeros, returning 'Not set' for None."""
+    if value is None:
+        return "Not set"
+    formatted = f"{value:.{precision}f}"
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".")
+    return formatted
 
 
 def _normalize_frame_to_uint8(frame: np.ndarray) -> np.ndarray:
@@ -81,6 +93,33 @@ def frame_to_qimage(frame: np.ndarray) -> QImage:
     height, width = image_data.shape
     image = QImage(image_data.data, width, height, image_data.strides[0], QImage.Format_Grayscale8)
     return image.copy()
+
+
+def _annotate_qimage(image: QImage, title: str) -> QImage:
+    """Draw a title overlay on top of an image using QPainter.
+
+    A semi-transparent dark bar is drawn at the top edge, followed by white
+    text. Returns a *copy* so the original is never mutated.
+    """
+
+    result = image.copy()
+    painter = QPainter(result)
+    painter.setRenderHint(QPainter.TextAntialiasing)
+
+    font = QFont("Segoe UI", 11, QFont.Bold)
+    painter.setFont(font)
+
+    metrics = QFontMetrics(font)
+    text_width = metrics.horizontalAdvance(title) + 24
+    text_height = metrics.height() + 12
+    bar_rect = QRect(0, 0, result.width(), text_height)
+
+    painter.fillRect(bar_rect, QColor(0, 0, 0, 160))
+    painter.setPen(Qt.white)
+    painter.drawText(bar_rect, Qt.AlignCenter, title)
+    painter.end()
+
+    return result
 
 
 class ImmDropBlock(QGroupBox):
@@ -398,7 +437,7 @@ class RheedImmVisualizerWindow(QWidget):
         self.laser_rate_input = QDoubleSpinBox()
         self.laser_rate_input.setRange(0.001, 100000.0)
         self.laser_rate_input.setDecimals(4)
-        self.laser_rate_input.setValue(10.0)
+        self.laser_rate_input.setValue(1.0)
         self.laser_rate_input.setToolTip("Laser repetition rate in pulses/second. Used to convert pulse count into time.")
 
         timing_layout.addRow("Movie fps", self.fps_input)
@@ -433,11 +472,23 @@ class RheedImmVisualizerWindow(QWidget):
         load_layout.addWidget(self.frame_summary_label, 2, 0, 1, 3)
         load_box.setLayout(load_layout)
 
+        batch_box = QGroupBox("Batch Export")
+        batch_layout = QVBoxLayout()
+        self.batch_input = QLineEdit()
+        self.batch_input.setPlaceholderText("e.g. 1, 4, 5")
+        self.batch_export_button = QPushButton("Export Frames")
+        self.batch_export_button.clicked.connect(self._batch_export)
+        batch_layout.addWidget(QLabel("Pulse counts (comma-separated)"))
+        batch_layout.addWidget(self.batch_input)
+        batch_layout.addWidget(self.batch_export_button)
+        batch_box.setLayout(batch_layout)
+
         left_layout = QVBoxLayout()
         left_layout.addWidget(self.drop_block)
         left_layout.addWidget(metadata_box)
         left_layout.addWidget(timing_box)
         left_layout.addWidget(load_box)
+        left_layout.addWidget(batch_box)
         left_layout.addWidget(self.status_label)
         left_layout.addStretch(1)
 
@@ -473,10 +524,14 @@ class RheedImmVisualizerWindow(QWidget):
         crop_layout.addWidget(self.crop_preview_label, 1)
         crop_layout.addWidget(self.crop_info_label)
 
+        self.title_overlay_check = QCheckBox("Overlay title (pulse & time)")
+        self.title_overlay_check.setChecked(True)
+
         crop_button_row = QHBoxLayout()
         crop_button_row.addWidget(self.clear_crop_button)
         crop_button_row.addWidget(self.copy_image_button)
         crop_button_row.addWidget(self.export_image_button)
+        crop_button_row.addWidget(self.title_overlay_check)
         crop_layout.addLayout(crop_button_row)
         crop_box.setLayout(crop_layout)
 
@@ -659,6 +714,31 @@ class RheedImmVisualizerWindow(QWidget):
         self.crop_preview_label.setText("Crop preview will appear here.")
         self.crop_info_label.setText("Draw a rectangle on the loaded frame to create a crop.")
 
+    def _build_title_string(self, frame_index: int | None = None, pulse_count: float | None = None) -> str | None:
+        """Build an overlay title with frame, time, and pulse info.
+
+        When *frame_index* is given explicitly it is used instead of the
+        currently displayed frame index.  When *pulse_count* is provided it
+        is used directly; otherwise it is estimated from the frame index.
+        Returns ``None`` when there is no movie or no usable frame index.
+        """
+
+        idx = frame_index if frame_index is not None else self._current_frame_index
+        if self._movie is None or idx is None:
+            return None
+
+        time_s = self._movie.time_from_frame_index(idx)
+        if pulse_count is None:
+            pulse_count = self._movie.pulse_count_from_frame_index(
+                idx,
+                self.laser_rate_input.value(),
+            )
+        return (
+            f"Frame {idx}"
+            f" | t = {_fmt_val(time_s)} s"
+            f" | pulse = {_fmt_val(pulse_count)}"
+        )
+
     def _current_image_array(self) -> tuple[np.ndarray | None, str]:
         """Return the active image data plus a short label for status messages.
 
@@ -689,6 +769,10 @@ class RheedImmVisualizerWindow(QWidget):
             return
 
         image = frame_to_qimage(image_array)
+        if self.title_overlay_check.isChecked():
+            title = self._build_title_string()
+            if title is not None:
+                image = _annotate_qimage(image, title)
         QGuiApplication.clipboard().setImage(image)
         self._set_status(f"{image_label.capitalize()} copied to clipboard.")
 
@@ -718,11 +802,79 @@ class RheedImmVisualizerWindow(QWidget):
             return
 
         image = frame_to_qimage(image_array)
+        if self.title_overlay_check.isChecked():
+            title = self._build_title_string()
+            if title is not None:
+                image = _annotate_qimage(image, title)
         if not image.save(save_path):
             self._set_status(f"Failed to export {image_label}.")
             return
 
         self._set_status(f"{image_label.capitalize()} exported to {save_path}.")
+
+    def _batch_export(self) -> None:
+        """Export frames nearest to the given laser pulse counts."""
+
+        movie = self._require_movie()
+        if movie is None:
+            return
+
+        raw = self.batch_input.text().strip()
+        if not raw:
+            self._set_status("Enter at least one pulse count.")
+            return
+
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        pulse_counts: list[float] = []
+        for part in parts:
+            try:
+                pulse_counts.append(float(part))
+            except ValueError:
+                self._set_status(
+                    f"Invalid pulse count: {part!r}. Use comma-separated numbers, e.g. 1, 4, 5."
+                )
+                return
+
+        if not pulse_counts:
+            self._set_status("No valid pulse counts to export.")
+            return
+
+        laser_rate_hz = self.laser_rate_input.value()
+        out_dir = str(movie.path.parent)
+        saved_count = 0
+        errors: list[str] = []
+
+        for pulse in pulse_counts:
+            try:
+                frame_index, frame = movie.load_frame_by_pulse_count(
+                    pulse, laser_rate_hz=laser_rate_hz, as_float=True
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"Pulse {pulse}: {exc}")
+                continue
+
+            image = frame_to_qimage(frame)
+
+            time_s = movie.time_from_frame_index(frame_index)
+
+            if self.title_overlay_check.isChecked():
+                title = self._build_title_string(frame_index=frame_index, pulse_count=pulse)
+                if title is not None:
+                    image = _annotate_qimage(image, title)
+
+            base = f"Frame{frame_index}-t={_fmt_val(time_s)}s-pulse={_fmt_val(pulse)}"
+            save_path = str(Path(out_dir) / f"{base}.png")
+
+            if not image.save(save_path):
+                errors.append(f"Pulse {pulse}: failed to save")
+                continue
+
+            saved_count += 1
+
+        msg = f"Exported {saved_count}/{len(pulse_counts)} frames to {out_dir}."
+        if errors:
+            msg += " Errors: " + "; ".join(errors)
+        self._set_status(msg)
 
 
 def main() -> int:
